@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+
+set -u
+
+if [ "${BIR_HESAB_AUTO_PUSH:-1}" = "0" ]; then
+  exit 0
+fi
+
+if [ "${BIR_HESAB_AUTO_PUSH_RUNNING:-0}" = "1" ]; then
+  exit 0
+fi
+export BIR_HESAB_AUTO_PUSH_RUNNING=1
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$repo_root" || exit 0
+
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
+  exit 0
+fi
+
+remote="${BIR_HESAB_AUTO_PUSH_REMOTE:-origin}"
+if ! git remote get-url "$remote" >/dev/null 2>&1; then
+  printf '%s\n' "[post-commit] Remote '$remote' not found. Skipping auto-push."
+  exit 0
+fi
+
+if ! git push "$remote" "$branch"; then
+  printf '%s\n' "[post-commit] Auto-push failed. Run: git push $remote $branch"
+  exit 0
+fi
+
+tags="$(git tag --points-at HEAD 2>/dev/null || true)"
+if [ -n "$tags" ]; then
+  for tag in $tags; do
+    git push "$remote" "$tag" >/dev/null 2>&1 || true
+  done
+fi

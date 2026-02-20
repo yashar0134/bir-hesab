@@ -37,6 +37,27 @@ Custom remote URL:
 npm run git:connect -- -RemoteUrl https://github.com/<user>/<repo>.git
 ```
 
+## Enable GitHub Auto Sync (One-Time)
+
+To push every new commit automatically to GitHub and block broken pushes:
+
+```bash
+npm run git:setup:auto
+```
+
+This setup enables:
+
+1. `post-commit` hook: pushes current branch to `origin` after every commit
+2. `pre-push` hook: runs syntax checks before any push
+3. shared hook path via local git config (`core.hooksPath=githooks`)
+
+Temporary disable examples (PowerShell):
+
+```powershell
+$env:BIR_HESAB_AUTO_PUSH='0'; git commit -m "local only"; Remove-Item Env:BIR_HESAB_AUTO_PUSH
+$env:BIR_HESAB_SKIP_PUSH_CHECKS='1'; git push; Remove-Item Env:BIR_HESAB_SKIP_PUSH_CHECKS
+```
+
 ## Updater Source (GitHub)
 
 Updater is configured to read latest version from GitHub Releases:
@@ -60,14 +81,16 @@ Optional:
 
 - If release contains `SHA256SUMS.txt` or `.sha256` asset, checksum is verified automatically.
 
-## GitHub Actions Release Pipeline
+## GitHub Actions
 
 Workflow file:
 
+- `.github/workflows/ci.yml` (runs on every push and pull request)
 - `.github/workflows/release-win.yml`
 
 Trigger:
 
+- Any branch push / pull request (CI syntax check)
 - Push tag like `v1.0.1`
 - Manual run (`workflow_dispatch`)
 
