@@ -110,3 +110,15 @@ This command:
 2. Generates `dist/SHA256SUMS.txt`
 3. Creates release for current tag if missing
 4. Uploads installer + checksum to the release
+
+## Automatic Backup
+
+Inside app topbar:
+
+- `پشتیبان‌گیری`: manual backup to chosen path
+- `بازیابی پشتیبان`: restore selected backup and restart app
+- `تنظیم بکاپ خودکار`: set daily/weekly schedule + keep last N backups
+
+Automatic backups are stored in app data folder under:
+
+- `backups/`

@@ -1024,6 +1024,19 @@ async function initCashboxSection() {
 function setupBackupEvents() {
   const backupBtn = document.getElementById("createBackupBtn");
   const restoreBtn = document.getElementById("restoreBackupBtn");
+  const settingsBtn = document.getElementById("backupSettingsBtn");
+
+  const settingsModal = document.getElementById("backupSettingsModal");
+  const closeSettingsBtn = document.getElementById("closeBackupSettingsBtn");
+  const saveSettingsBtn = document.getElementById("saveAutoBackupSettingsBtn");
+  const runAutoNowBtn = document.getElementById("runAutoBackupNowBtn");
+  const enabledInput = document.getElementById("autoBackupEnabled");
+  const scheduleInput = document.getElementById("autoBackupSchedule");
+  const keepLastInput = document.getElementById("autoBackupKeepLast");
+  const lastInfo = document.getElementById("autoBackupLastInfo");
+  const dueInfo = document.getElementById("autoBackupDueInfo");
+  const filesInfo = document.getElementById("autoBackupFilesInfo");
+
   if (!backupBtn || !restoreBtn) return;
 
   backupBtn.addEventListener("click", async () => {
@@ -1054,6 +1067,121 @@ function setupBackupEvents() {
     } finally {
       restoreBtn.disabled = false;
       restoreBtn.textContent = prevLabel;
+    }
+  });
+
+  const hasSettingsUi =
+    settingsBtn &&
+    settingsModal &&
+    closeSettingsBtn &&
+    saveSettingsBtn &&
+    runAutoNowBtn &&
+    enabledInput &&
+    scheduleInput &&
+    keepLastInput &&
+    lastInfo &&
+    dueInfo &&
+    filesInfo;
+
+  if (!hasSettingsUi) return;
+
+  const formatDateTime = (isoString) => {
+    if (!isoString) return "هنوز اجرا نشده است.";
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return isoString;
+    return new Intl.DateTimeFormat("fa-IR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "Asia/Tehran"
+    }).format(date);
+  };
+
+  const renderSettingsState = (payload) => {
+    const settings = payload?.settings || {};
+    enabledInput.value = settings.enabled ? "1" : "0";
+    scheduleInput.value = settings.schedule === "weekly" ? "weekly" : "daily";
+    keepLastInput.value = String(settings.keepLast || 14);
+
+    lastInfo.textContent = `آخرین اجرای بکاپ خودکار: ${formatDateTime(settings.lastBackupAt)}`;
+    dueInfo.textContent = payload?.dueNow
+      ? "الان زمان اجرای بکاپ خودکار رسیده است."
+      : "فعلاً بکاپ خودکار طبق برنامه است.";
+
+    const files = Array.isArray(payload?.recentBackups) ? payload.recentBackups : [];
+    if (!files.length) {
+      filesInfo.textContent = "هنوز بکاپ خودکار ذخیره نشده است.";
+      return;
+    }
+    filesInfo.textContent = `تعداد بکاپ‌های موجود: ${toPersianDigits(files.length)} | جدیدترین فایل: ${files[0].name}`;
+  };
+
+  const loadSettingsState = async () => {
+    const payload = await window.birHesab.invoke("system:backup:settings:get");
+    renderSettingsState(payload);
+  };
+
+  settingsBtn.addEventListener("click", async () => {
+    try {
+      await loadSettingsState();
+      settingsModal.classList.remove("hidden");
+    } catch (error) {
+      alert(`خطا در بارگذاری تنظیمات بکاپ: ${error.message}`);
+    }
+  });
+
+  closeSettingsBtn.addEventListener("click", () => {
+    settingsModal.classList.add("hidden");
+  });
+
+  settingsModal.addEventListener("click", (event) => {
+    if (event.target === settingsModal) {
+      settingsModal.classList.add("hidden");
+    }
+  });
+
+  saveSettingsBtn.addEventListener("click", async () => {
+    const keepLast = Number.parseInt(normalizeDigits(keepLastInput.value || ""), 10);
+    if (!Number.isFinite(keepLast) || keepLast < 1 || keepLast > 120) {
+      alert("تعداد نگهداری باید بین ۱ تا ۱۲۰ باشد.");
+      return;
+    }
+
+    saveSettingsBtn.disabled = true;
+    const prevLabel = saveSettingsBtn.textContent;
+    saveSettingsBtn.textContent = "در حال ذخیره...";
+    try {
+      const payload = await window.birHesab.invoke("system:backup:settings:update", {
+        enabled: enabledInput.value === "1",
+        schedule: scheduleInput.value,
+        keepLast
+      });
+      renderSettingsState(payload);
+      alert("تنظیمات بکاپ خودکار ذخیره شد.");
+    } catch (error) {
+      alert(`خطا در ذخیره تنظیمات: ${error.message}`);
+    } finally {
+      saveSettingsBtn.disabled = false;
+      saveSettingsBtn.textContent = prevLabel;
+    }
+  });
+
+  runAutoNowBtn.addEventListener("click", async () => {
+    runAutoNowBtn.disabled = true;
+    const prevLabel = runAutoNowBtn.textContent;
+    runAutoNowBtn.textContent = "در حال اجرا...";
+    try {
+      const result = await window.birHesab.invoke("system:backup:auto:run");
+      if (result?.skipped) {
+        alert("بکاپ خودکار غیرفعال است. ابتدا آن را فعال کنید.");
+      } else {
+        alert("بکاپ خودکار با موفقیت اجرا شد.");
+      }
+      await loadSettingsState();
+    } catch (error) {
+      alert(`خطا در اجرای بکاپ خودکار: ${error.message}`);
+    } finally {
+      runAutoNowBtn.disabled = false;
+      runAutoNowBtn.textContent = prevLabel;
     }
   });
 }

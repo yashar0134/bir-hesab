@@ -14,8 +14,24 @@ const { registerUpdaterHandlers } = require("./modules/updater.js");
 let mainWindow;
 let db;
 
+const AUTO_BACKUP_SETTINGS_FILE = "auto-backup-settings.json";
+const DEFAULT_AUTO_BACKUP_SETTINGS = Object.freeze({
+  enabled: true,
+  schedule: "daily",
+  keepLast: 14,
+  lastBackupAt: ""
+});
+
 function getDatabasePath() {
   return path.join(app.getPath("userData"), "bir-hesab.db");
+}
+
+function getBackupsDirectoryPath() {
+  return path.join(app.getPath("userData"), "backups");
+}
+
+function getAutoBackupSettingsPath() {
+  return path.join(app.getPath("userData"), AUTO_BACKUP_SETTINGS_FILE);
 }
 
 function getBackupFileName() {
@@ -31,6 +47,169 @@ function getBackupFileName() {
 function unlinkIfExists(filePath) {
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
+  }
+}
+
+function ensureDirectoryExists(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function sanitizeAutoBackupSettings(raw = {}) {
+  const enabled =
+    typeof raw.enabled === "boolean" ? raw.enabled : DEFAULT_AUTO_BACKUP_SETTINGS.enabled;
+
+  const schedule = raw.schedule === "weekly" ? "weekly" : "daily";
+  const keepRaw = Number(raw.keepLast);
+  const keepLast = Number.isFinite(keepRaw)
+    ? Math.min(120, Math.max(1, Math.trunc(keepRaw)))
+    : DEFAULT_AUTO_BACKUP_SETTINGS.keepLast;
+
+  let lastBackupAt = "";
+  if (typeof raw.lastBackupAt === "string" && raw.lastBackupAt.trim()) {
+    const parsed = Date.parse(raw.lastBackupAt);
+    if (!Number.isNaN(parsed)) {
+      lastBackupAt = new Date(parsed).toISOString();
+    }
+  }
+
+  return {
+    enabled,
+    schedule,
+    keepLast,
+    lastBackupAt
+  };
+}
+
+function loadAutoBackupSettings() {
+  const filePath = getAutoBackupSettingsPath();
+  const fallback = { ...DEFAULT_AUTO_BACKUP_SETTINGS };
+
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2), "utf8");
+    return fallback;
+  }
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const normalized = sanitizeAutoBackupSettings(raw);
+    fs.writeFileSync(filePath, JSON.stringify(normalized, null, 2), "utf8");
+    return normalized;
+  } catch {
+    fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2), "utf8");
+    return fallback;
+  }
+}
+
+function saveAutoBackupSettings(settings) {
+  const normalized = sanitizeAutoBackupSettings(settings);
+  const filePath = getAutoBackupSettingsPath();
+  fs.writeFileSync(filePath, JSON.stringify(normalized, null, 2), "utf8");
+  return normalized;
+}
+
+function getAutoBackupFileName(now = new Date()) {
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `bir-hesab-auto-${yyyy}${mm}${dd}-${hh}${min}${ss}.db`;
+}
+
+function createDatabaseBackup(targetPath) {
+  db.pragma("wal_checkpoint(TRUNCATE)");
+  fs.copyFileSync(getDatabasePath(), targetPath);
+}
+
+function listAutoBackups(limit = 30) {
+  const backupsDir = getBackupsDirectoryPath();
+  if (!fs.existsSync(backupsDir)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(backupsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".db"))
+    .map((entry) => {
+      const filePath = path.join(backupsDir, entry.name);
+      const stat = fs.statSync(filePath);
+      return {
+        name: entry.name,
+        path: filePath,
+        sizeBytes: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        modifiedAtMs: stat.mtimeMs
+      };
+    })
+    .sort((a, b) => b.modifiedAtMs - a.modifiedAtMs)
+    .slice(0, Math.max(1, Number(limit) || 30))
+    .map(({ modifiedAtMs, ...item }) => item);
+}
+
+function pruneAutoBackups(keepLast) {
+  const keep = Math.min(120, Math.max(1, Math.trunc(Number(keepLast) || 1)));
+  const allBackups = listAutoBackups(2000);
+  allBackups.slice(keep).forEach((file) => unlinkIfExists(file.path));
+}
+
+function isAutoBackupDue(settings) {
+  if (!settings.enabled) return false;
+  if (!settings.lastBackupAt) return true;
+
+  const lastTime = Date.parse(settings.lastBackupAt);
+  if (Number.isNaN(lastTime)) return true;
+
+  const intervalMs =
+    settings.schedule === "weekly"
+      ? 7 * 24 * 60 * 60 * 1000
+      : 24 * 60 * 60 * 1000;
+
+  return Date.now() - lastTime >= intervalMs;
+}
+
+function runAutoBackupNow() {
+  const settings = loadAutoBackupSettings();
+  if (!settings.enabled) {
+    return {
+      skipped: true,
+      reason: "disabled",
+      settings,
+      recentBackups: listAutoBackups(10)
+    };
+  }
+
+  const now = new Date();
+  ensureDirectoryExists(getBackupsDirectoryPath());
+  const targetPath = path.join(getBackupsDirectoryPath(), getAutoBackupFileName(now));
+  createDatabaseBackup(targetPath);
+
+  const updatedSettings = saveAutoBackupSettings({
+    ...settings,
+    lastBackupAt: now.toISOString()
+  });
+
+  pruneAutoBackups(updatedSettings.keepLast);
+
+  return {
+    skipped: false,
+    filePath: targetPath,
+    settings: updatedSettings,
+    recentBackups: listAutoBackups(10)
+  };
+}
+
+function runScheduledAutoBackupIfDue() {
+  try {
+    const settings = loadAutoBackupSettings();
+    if (!isAutoBackupDue(settings)) {
+      return;
+    }
+    runAutoBackupNow();
+  } catch (error) {
+    console.error("Auto backup failed:", error);
   }
 }
 
@@ -66,8 +245,41 @@ function createWindow() {
 }
 
 function registerDataHandlers() {
+  ipcMain.handle("system:backup:settings:get", () => {
+    const settings = loadAutoBackupSettings();
+    return {
+      settings,
+      dueNow: isAutoBackupDue(settings),
+      recentBackups: listAutoBackups(10)
+    };
+  });
+
+  ipcMain.handle("system:backup:settings:update", (_, payload = {}) => {
+    const current = loadAutoBackupSettings();
+    const next = saveAutoBackupSettings({
+      ...current,
+      enabled:
+        typeof payload.enabled === "boolean" ? payload.enabled : current.enabled,
+      schedule: payload.schedule ?? current.schedule,
+      keepLast:
+        payload.keepLast === undefined ? current.keepLast : payload.keepLast,
+      lastBackupAt: current.lastBackupAt
+    });
+
+    pruneAutoBackups(next.keepLast);
+
+    return {
+      settings: next,
+      dueNow: isAutoBackupDue(next),
+      recentBackups: listAutoBackups(10)
+    };
+  });
+
+  ipcMain.handle("system:backup:auto:run", () => {
+    return runAutoBackupNow();
+  });
+
   ipcMain.handle("system:backup:create", async () => {
-    const dbPath = getDatabasePath();
     const saveResult = await dialog.showSaveDialog(mainWindow, {
       title: "ذخیره فایل پشتیبان",
       defaultPath: path.join(app.getPath("documents"), getBackupFileName()),
@@ -81,8 +293,7 @@ function registerDataHandlers() {
       return { canceled: true };
     }
 
-    db.pragma("wal_checkpoint(TRUNCATE)");
-    fs.copyFileSync(dbPath, saveResult.filePath);
+    createDatabaseBackup(saveResult.filePath);
 
     return {
       canceled: false,
@@ -330,6 +541,8 @@ app
   .whenReady()
   .then(() => {
     db = initializeDatabase(app);
+    loadAutoBackupSettings();
+    runScheduledAutoBackupIfDue();
 
     registerServiceHandlers(ipcMain, db);
     registerProjectHandlers(ipcMain, db);

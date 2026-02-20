@@ -26,6 +26,7 @@
             <button type="button" class="btn-primary hidden" id="updateActionBtn">دانلود آپدیت</button>
             <button type="button" class="btn-secondary" id="createBackupBtn">پشتیبان‌گیری</button>
             <button type="button" class="btn-secondary" id="restoreBackupBtn">بازیابی پشتیبان</button>
+            <button type="button" class="btn-secondary" id="backupSettingsBtn">تنظیم بکاپ خودکار</button>
             <button type="button" class="btn-secondary" id="openHelpBtn">آموزش</button>
           </div>
         </header>
@@ -58,6 +59,43 @@
         </div>
         <div class="modal-body">
           <iframe id="pdfPreviewFrame" class="pdf-preview-frame"></iframe>
+        </div>
+      </div>
+    </div>
+    <div id="backupSettingsModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>تنظیمات بکاپ خودکار</h3>
+          <button type="button" id="closeBackupSettingsBtn" class="btn-danger">بستن</button>
+        </div>
+        <div class="modal-body">
+          <div class="grid-3">
+            <div>
+              <label for="autoBackupEnabled">وضعیت</label>
+              <select id="autoBackupEnabled">
+                <option value="1">فعال</option>
+                <option value="0">غیرفعال</option>
+              </select>
+            </div>
+            <div>
+              <label for="autoBackupSchedule">تناوب</label>
+              <select id="autoBackupSchedule">
+                <option value="daily">روزانه</option>
+                <option value="weekly">هفتگی</option>
+              </select>
+            </div>
+            <div>
+              <label for="autoBackupKeepLast">تعداد نگهداری</label>
+              <input id="autoBackupKeepLast" type="number" min="1" max="120" value="14" />
+            </div>
+          </div>
+          <p id="autoBackupLastInfo" class="list-note"></p>
+          <p id="autoBackupDueInfo" class="list-note"></p>
+          <p id="autoBackupFilesInfo" class="list-note"></p>
+          <div class="form-actions">
+            <button type="button" id="runAutoBackupNowBtn" class="btn-secondary">اجرای بکاپ خودکار الان</button>
+            <button type="button" id="saveAutoBackupSettingsBtn" class="btn-primary">ذخیره تنظیمات</button>
+          </div>
         </div>
       </div>
     </div>
