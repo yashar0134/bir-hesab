@@ -81,6 +81,7 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
+      "warningsAsErrors": false,
       "deleteAppDataOnUninstall": false,
       "installerIcon": "assets/icons/app.ico",
       "uninstallerIcon": "assets/icons/app.ico",
