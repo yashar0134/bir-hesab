@@ -64,6 +64,9 @@
     "win": {
       "icon": "assets/icons/app.ico",
       "signAndEditExecutable": false,
+      "signtoolOptions": {
+        "sign": "./scripts/windows-no-sign.js"
+      },
       "target": [
         {
           "target": "nsis",
