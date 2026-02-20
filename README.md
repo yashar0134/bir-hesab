@@ -75,4 +75,3 @@ git push origin v1.0.1
 ```
 
 After GitHub Action finishes, clients receive update through app updater.
-
