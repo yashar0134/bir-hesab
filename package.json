@@ -10,7 +10,11 @@
     "postinstall": "npm run rebuild:native",
     "build:win": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& electron-builder --win nsis --x64",
     "build:win:fresh": "npm run rebuild:native && set CSC_IDENTITY_AUTO_DISCOVERY=false&& electron-builder --win nsis --x64",
-    "pack:dir": "npm run rebuild:native && electron-builder --dir"
+    "pack:dir": "npm run rebuild:native && electron-builder --dir",
+    "git:connect": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/connect-github.ps1",
+    "release:patch": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/release.ps1 -Increment patch",
+    "release:minor": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/release.ps1 -Increment minor",
+    "release:major": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/release.ps1 -Increment major"
   },
   "keywords": [
     "electron",
