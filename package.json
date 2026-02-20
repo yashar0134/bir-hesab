@@ -56,8 +56,7 @@
       "src/**/*",
       "assets/**/*",
       "updater/**/*",
-      "package.json",
-      "node_modules/**/*"
+      "package.json"
     ],
     "directories": {
       "output": "dist"
