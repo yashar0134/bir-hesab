@@ -1,0 +1,68 @@
+﻿<section class="section-card">
+  <h2 class="section-title">مدیریت پروژه‌ها</h2>
+  <form id="projectForm">
+    <div class="grid-3">
+      <div>
+        <label for="projectTitle">عنوان پروژه</label>
+        <input id="projectTitle" required />
+      </div>
+      <div>
+        <label for="projectClient">نام کارفرما</label>
+        <input id="projectClient" required />
+      </div>
+      <div>
+        <label>خدمات مرتبط (چند انتخابی)</label>
+        <div id="projectServicesList" class="services-checklist"></div>
+      </div>
+      <div>
+        <label for="projectStatus">وضعیت</label>
+        <select id="projectStatus">
+          <option value="open">باز</option>
+          <option value="in-progress">درحال انجام</option>
+          <option value="done">تکمیل شده</option>
+          <option value="cancelled">لغو شده</option>
+        </select>
+      </div>
+      <div>
+        <label for="projectStart">تاریخ شروع</label>
+        <input id="projectStart" type="text" data-jdp inputmode="numeric" autocomplete="off" placeholder="1404/01/01" required />
+      </div>
+    </div>
+    <div>
+      <label for="projectNotes">یادداشت</label>
+      <textarea id="projectNotes"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" type="submit">ثبت پروژه</button>
+    </div>
+  </form>
+</section>
+
+<section class="section-card">
+  <h3 class="section-title">لیست پروژه‌ها</h3>
+  <div class="filter-grid">
+    <input id="projectsSearch" placeholder="جستجو در عنوان/کارفرما" />
+    <select id="projectsStatusFilter">
+      <option value="">همه وضعیت‌ها</option>
+      <option value="open">باز</option>
+      <option value="in-progress">درحال انجام</option>
+      <option value="done">تکمیل شده</option>
+      <option value="cancelled">لغو شده</option>
+    </select>
+    <input id="projectsFrom" data-jdp placeholder="از تاریخ" />
+    <input id="projectsTo" data-jdp placeholder="تا تاریخ" />
+    <button id="projectsFilterReset" type="button" class="btn-secondary">پاکسازی</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>عنوان</th>
+        <th>کارفرما</th>
+        <th>خدمت</th>
+        <th>وضعیت</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody id="projectsRows"></tbody>
+  </table>
+</section>

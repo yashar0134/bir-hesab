@@ -1,0 +1,65 @@
+﻿<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bir Hesab</title>
+    <link rel="stylesheet" href="../../node_modules/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside id="sidebar" class="sidebar"></aside>
+      <main class="main">
+        <header class="topbar">
+          <div class="topbar-right">
+            <h1>بیر حساب</h1>
+            <p>نرم‌افزار حسابداری بیرینو برای ویندوز</p>
+          </div>
+          <div class="mode-tabs" id="modeTabs">
+            <span id="updateStatus" class="update-pill update-info">آپدیت: آماده بررسی</span>
+            <button type="button" class="btn-secondary" id="checkUpdateBtn">بررسی آپدیت</button>
+            <button type="button" class="btn-primary hidden" id="updateActionBtn">دانلود آپدیت</button>
+            <button type="button" class="btn-secondary" id="openHelpBtn">آموزش</button>
+          </div>
+        </header>
+        <section class="quick-guide" id="quickGuide">
+          <div class="quick-step">① ورود خدمت</div>
+          <div class="quick-step">② ساخت پروژه</div>
+          <div class="quick-step">③ ثبت تسویه</div>
+          <div class="quick-step">④ مشاهده گزارش</div>
+        </section>
+        <section id="content" class="content"></section>
+      </main>
+    </div>
+    <div id="helpModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>راهنمای این بخش</h3>
+          <button type="button" id="closeHelpBtn" class="btn-danger">بستن</button>
+        </div>
+        <div id="helpContent" class="modal-body"></div>
+      </div>
+    </div>
+    <div id="pdfPreviewModal" class="modal hidden">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <h3>پیش‌نمایش PDF</h3>
+          <div class="row-actions">
+            <button type="button" id="confirmPdfExport" class="btn-primary">تأیید و ذخیره</button>
+            <button type="button" id="closePdfPreview" class="btn-danger">بستن</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <iframe id="pdfPreviewFrame" class="pdf-preview-frame"></iframe>
+        </div>
+      </div>
+    </div>
+    <script src="../../node_modules/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.js"></script>
+    <script type="module" src="../renderer.js"></script>
+  </body>
+</html>

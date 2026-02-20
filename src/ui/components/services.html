@@ -1,0 +1,55 @@
+﻿<section class="section-card">
+  <h2 class="section-title">مدیریت خدمات</h2>
+  <form id="serviceForm">
+    <div class="grid-3">
+      <div>
+        <label for="serviceName">نام خدمت</label>
+        <input id="serviceName" required />
+      </div>
+      <div>
+        <label for="pricingModel">مدل قیمت‌گذاری</label>
+        <select id="pricingModel" required>
+          <option value="hourly">ساعتی</option>
+          <option value="daily">روزانه</option>
+          <option value="weekly">هفتگی</option>
+          <option value="monthly">ماهانه</option>
+          <option value="project">پروژه‌ای</option>
+          <option value="per-minute">دقیقه‌ای</option>
+        </select>
+      </div>
+      <div>
+        <label for="serviceRate">نرخ (تومان)</label>
+        <input id="serviceRate" type="text" class="money-input" inputmode="numeric" placeholder="100,000" required />
+      </div>
+    </div>
+    <div>
+      <label for="serviceDesc">توضیحات</label>
+      <textarea id="serviceDesc"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" type="submit">ثبت خدمت</button>
+    </div>
+  </form>
+</section>
+
+<section class="section-card">
+  <h3 class="section-title">لیست خدمات</h3>
+  <div class="filter-grid">
+    <input id="servicesSearch" placeholder="جستجو در نام/مدل/توضیح" />
+    <input id="servicesFrom" data-jdp placeholder="از تاریخ" />
+    <input id="servicesTo" data-jdp placeholder="تا تاریخ" />
+    <button id="servicesFilterReset" type="button" class="btn-secondary">پاکسازی</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>نام</th>
+        <th>مدل</th>
+        <th>نرخ</th>
+        <th>توضیح</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody id="servicesRows"></tbody>
+  </table>
+</section>

@@ -1,0 +1,9 @@
+{
+  "version": "1.0.1",
+  "downloadUrl": "https://your-domain.com/bir-hesab/Bir-Hesab-Setup-1.0.1.exe",
+  "releaseNotes": [
+    "Fix cashbox totals",
+    "Improve settlements form"
+  ],
+  "sha256": "OPTIONAL_SHA256_OF_EXE_FILE"
+}

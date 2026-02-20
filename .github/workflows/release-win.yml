@@ -1,0 +1,51 @@
+name: Release Windows App
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        run: npm run build:win
+
+      - name: Generate SHA256 checksum
+        id: checksum
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "dist" -Filter "Bir-Hesab-Setup-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) {
+            throw "Installer file not found in dist/"
+          }
+          $hash = (Get-FileHash -Path $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($exe.Name)" | Out-File -FilePath "dist/SHA256SUMS.txt" -Encoding utf8
+          "exe_path=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.checksum.outputs.exe_path }}
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true

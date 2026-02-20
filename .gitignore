@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+*.log
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

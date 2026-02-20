@@ -1,0 +1,50 @@
+﻿<section class="section-card">
+  <h2 class="section-title">ثبت ساده دخل و خرج</h2>
+  <form id="cashboxForm">
+    <div class="grid-3">
+      <div>
+        <label for="cashboxAmount">مبلغ (تومان)</label>
+        <input id="cashboxAmount" type="text" class="money-input" inputmode="numeric" placeholder="100,000" required />
+      </div>
+      <div>
+        <label for="cashboxDate">تاریخ</label>
+        <input id="cashboxDate" type="text" data-jdp inputmode="numeric" autocomplete="off" placeholder="1404/01/01" required />
+      </div>
+    </div>
+    <div>
+      <label for="cashboxDesc">توضیحات</label>
+      <textarea id="cashboxDesc"></textarea>
+    </div>
+    <div class="simple-cashbox-actions">
+      <button class="btn-primary btn-income" id="cashboxIncomeBtn" type="button">ثبت دخل</button>
+      <button class="btn-primary btn-expense" id="cashboxExpenseBtn" type="button">ثبت خرج</button>
+    </div>
+  </form>
+</section>
+
+<section class="section-card">
+  <h3 class="section-title">گردش صندوق</h3>
+  <div class="filter-grid">
+    <input id="cashboxSearch" placeholder="جستجو در نوع/توضیح" />
+    <select id="cashboxTypeFilter">
+      <option value="">همه نوع‌ها</option>
+      <option value="in">دخل</option>
+      <option value="out">خرج</option>
+    </select>
+    <input id="cashboxFrom" data-jdp placeholder="از تاریخ" />
+    <input id="cashboxTo" data-jdp placeholder="تا تاریخ" />
+    <button id="cashboxFilterReset" type="button" class="btn-secondary">پاکسازی</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>نوع</th>
+        <th>مبلغ</th>
+        <th>تاریخ</th>
+        <th>توضیح</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody id="cashboxRows"></tbody>
+  </table>
+</section>

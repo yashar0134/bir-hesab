@@ -1,0 +1,83 @@
+{
+  "name": "bir-hesab",
+  "version": "1.0.0",
+  "description": "Bir Hesab - Offline-first Persian accounting desktop app",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "set ELECTRON_RUN_AS_NODE=& electron .",
+    "dev": "set ELECTRON_RUN_AS_NODE=& electron .",
+    "rebuild:native": "set ELECTRON_RUN_AS_NODE=& electron-rebuild -f -w better-sqlite3",
+    "postinstall": "npm run rebuild:native",
+    "build:win": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& electron-builder --win nsis --x64",
+    "build:win:fresh": "npm run rebuild:native && set CSC_IDENTITY_AUTO_DISCOVERY=false&& electron-builder --win nsis --x64",
+    "pack:dir": "npm run rebuild:native && electron-builder --dir"
+  },
+  "keywords": [
+    "electron",
+    "accounting",
+    "sqlite",
+    "persian",
+    "rtl"
+  ],
+  "author": "Bir Hesab Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yashar0134/bir-hesab.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yashar0134/bir-hesab/issues"
+  },
+  "homepage": "https://github.com/yashar0134/bir-hesab",
+  "dependencies": {
+    "@majidh1/jalalidatepicker": "^0.9.12",
+    "better-sqlite3": "^12.4.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "cross-env": "^10.0.0",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.birhesab.desktop",
+    "productName": "Bir Hesab",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/build/Release/*.node"
+    ],
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "updater/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "assets/icons/app.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Bir-Hesab-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "assets/icons/app.ico",
+      "uninstallerIcon": "assets/icons/app.ico",
+      "installerHeaderIcon": "assets/icons/app.ico"
+    }
+  }
+}

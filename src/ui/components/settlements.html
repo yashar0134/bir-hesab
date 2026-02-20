@@ -1,0 +1,194 @@
+﻿<section class="section-card">
+  <h2 class="section-title">داشبورد تسویه همکاران (خودکار)</h2>
+  <p class="list-note">قابل پرداخت = شرط پروژه (درصدی/حقوقی) منهای پرداخت ثبت‌شده به همکار</p>
+  <table>
+    <thead>
+      <tr>
+        <th>همکار</th>
+        <th>پروژه</th>
+        <th>مدل</th>
+        <th>دریافتی از کارفرما</th>
+        <th>قابل پرداخت</th>
+        <th>پرداخت‌شده</th>
+        <th>مانده</th>
+      </tr>
+    </thead>
+    <tbody id="partnerPayablesRows"></tbody>
+  </table>
+</section>
+
+<section class="section-card">
+  <h2 class="section-title">همکاران (Partners)</h2>
+  <form id="partnerForm">
+    <div class="grid-3">
+      <div>
+        <label for="partnerName">نام همکار</label>
+        <input id="partnerName" required />
+      </div>
+      <div>
+        <label for="partnerRole">نقش</label>
+        <input id="partnerRole" />
+      </div>
+      <div>
+        <label for="partnerShare">درصد پیش‌فرض</label>
+        <input id="partnerShare" type="number" min="0" max="100" />
+      </div>
+      <div>
+        <label for="partnerPaymentModel">مدل پرداخت</label>
+        <select id="partnerPaymentModel">
+          <option value="percent">درصدی</option>
+          <option value="salary_weekly">حقوق هفتگی</option>
+          <option value="salary_monthly">حقوق ماهانه</option>
+        </select>
+      </div>
+      <div>
+        <label for="partnerSalaryAmount">مبلغ حقوق (تومان)</label>
+        <input id="partnerSalaryAmount" class="money-input" inputmode="numeric" placeholder="100,000" />
+      </div>
+      <div>
+        <label for="partnerSalaryPeriod">بازه حقوق</label>
+        <select id="partnerSalaryPeriod">
+          <option value="weekly">هفتگی</option>
+          <option value="monthly">ماهانه</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" type="submit">ثبت همکار</button>
+    </div>
+  </form>
+  <div class="filter-grid">
+    <input id="partnersSearch" placeholder="جستجو در نام/نقش/مدل" />
+    <input id="partnersFrom" data-jdp placeholder="از تاریخ" />
+    <input id="partnersTo" data-jdp placeholder="تا تاریخ" />
+    <button id="partnersFilterReset" type="button" class="btn-secondary">پاکسازی</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>نام</th>
+        <th>مدل پرداخت</th>
+        <th>درصد/حقوق</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody id="partnersRows"></tbody>
+  </table>
+</section>
+
+<section class="section-card">
+  <h2 class="section-title">شرایط پرداخت همکار در هر پروژه</h2>
+  <form id="partnerTermForm">
+    <div class="grid-3">
+      <div>
+        <label for="termPartner">همکار</label>
+        <select id="termPartner"></select>
+      </div>
+      <div>
+        <label for="termProject">پروژه</label>
+        <select id="termProject"></select>
+      </div>
+      <div>
+        <label for="termModel">مدل پرداخت</label>
+        <select id="termModel">
+          <option value="percent">درصدی</option>
+          <option value="salary_weekly">حقوق هفتگی</option>
+          <option value="salary_monthly">حقوق ماهانه</option>
+        </select>
+      </div>
+      <div>
+        <label for="termPercent">درصد برای این پروژه</label>
+        <input id="termPercent" type="number" min="0" max="100" placeholder="30" />
+      </div>
+      <div>
+        <label for="termSalary">مبلغ حقوق برای این پروژه (تومان)</label>
+        <input id="termSalary" class="money-input" inputmode="numeric" placeholder="500,000" />
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" type="submit">ذخیره شرط پروژه</button>
+    </div>
+  </form>
+  <table>
+    <thead>
+      <tr>
+        <th>همکار</th>
+        <th>پروژه</th>
+        <th>مدل</th>
+        <th>مقدار</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody id="partnerTermsRows"></tbody>
+  </table>
+</section>
+
+<section class="section-card">
+  <h2 class="section-title">تسویه‌ها</h2>
+  <form id="settlementForm">
+    <div class="grid-3">
+      <div>
+        <label for="settlementType">نوع تسویه</label>
+        <select id="settlementType">
+          <option value="partner">با همکار</option>
+          <option value="client">با کارفرما</option>
+        </select>
+      </div>
+      <div>
+        <label for="settlementRelated">شناسه مرتبط (اختیاری)</label>
+        <input id="settlementRelated" type="number" min="1" />
+      </div>
+      <div>
+        <label for="settlementProject">شناسه پروژه (اختیاری)</label>
+        <input id="settlementProject" type="number" min="1" />
+      </div>
+      <div>
+        <label for="settlementAmount">مبلغ (تومان)</label>
+        <input id="settlementAmount" type="text" class="money-input" inputmode="numeric" placeholder="100,000" required />
+      </div>
+      <div>
+        <label for="settlementMethod">روش پرداخت</label>
+        <select id="settlementMethod">
+          <option value="cash">نقدی</option>
+          <option value="card">کارت</option>
+          <option value="bank">بانک</option>
+        </select>
+      </div>
+      <div>
+        <label for="settlementDate">تاریخ</label>
+        <input id="settlementDate" type="text" data-jdp inputmode="numeric" autocomplete="off" placeholder="1404/01/01" required />
+      </div>
+    </div>
+    <div>
+      <label for="settlementDesc">توضیحات</label>
+      <textarea id="settlementDesc"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" type="submit">ثبت تسویه</button>
+    </div>
+  </form>
+  <div class="filter-grid">
+    <input id="settlementsSearch" placeholder="جستجو در نوع/روش/توضیح" />
+    <select id="settlementsTypeFilter">
+      <option value="">همه نوع‌ها</option>
+      <option value="partner">همکار</option>
+      <option value="client">کارفرما</option>
+    </select>
+    <input id="settlementsFrom" data-jdp placeholder="از تاریخ" />
+    <input id="settlementsTo" data-jdp placeholder="تا تاریخ" />
+    <button id="settlementsFilterReset" type="button" class="btn-secondary">پاکسازی</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>نوع</th>
+        <th>مبلغ</th>
+        <th>روش</th>
+        <th>تاریخ</th>
+        <th>توضیح</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody id="settlementsRows"></tbody>
+  </table>
+</section>
