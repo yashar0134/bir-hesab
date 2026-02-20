@@ -372,6 +372,24 @@ async function initBirinoDashboard() {
       `سود خالص انتظاری: ${formatCurrency(t.totalExpectedNetProfit)} | ` +
       `سود خالص تحقق‌یافته: ${formatCurrency(t.totalRealizedNetProfit)}`;
   }
+
+  document.getElementById("exportProjectProfitExcel")?.addEventListener("click", async () => {
+    try {
+      const result = await window.birHesab.invoke("reports:project-profit:export:excel");
+      if (!result?.canceled) alert("گزارش سود پروژه/همکار (Excel) ذخیره شد.");
+    } catch (error) {
+      alert(`خطا در خروجی Excel: ${error.message}`);
+    }
+  });
+
+  document.getElementById("exportProjectProfitPdf")?.addEventListener("click", async () => {
+    try {
+      const result = await window.birHesab.invoke("reports:project-profit:export:pdf");
+      if (!result?.canceled) alert("گزارش سود پروژه/همکار (PDF) ذخیره شد.");
+    } catch (error) {
+      alert(`خطا در خروجی PDF: ${error.message}`);
+    }
+  });
 }
 async function initServicesSection() {
   const form = document.getElementById("serviceForm");

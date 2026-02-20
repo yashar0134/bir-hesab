@@ -393,7 +393,7 @@ function registerReportHandlers() {
     return { totals, monthly, yearly };
   });
 
-  ipcMain.handle("reports:project-profit", () => {
+  const getProjectProfitReport = () => {
     const projectRows = db
       .prepare(
         `
@@ -511,6 +511,10 @@ function registerReportHandlers() {
       projects: projectRows,
       partners: partnerRows
     };
+  };
+
+  ipcMain.handle("reports:project-profit", () => {
+    return getProjectProfitReport();
   });
 
   ipcMain.handle("reports:export:excel", async (_, payload) => {
@@ -641,6 +645,156 @@ function registerReportHandlers() {
     await printWindow.loadURL(
       `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
     );
+    const pdfBuffer = await printWindow.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true
+    });
+    fs.writeFileSync(saveResult.filePath, pdfBuffer);
+    printWindow.close();
+
+    return { canceled: false, filePath: saveResult.filePath };
+  });
+
+  ipcMain.handle("reports:project-profit:export:excel", async () => {
+    const report = getProjectProfitReport();
+    const saveResult = await dialog.showSaveDialog(mainWindow, {
+      title: "ذخیره گزارش سود پروژه/همکار (Excel)",
+      defaultPath: "birino-project-profit-report.xlsx",
+      filters: [{ name: "Excel", extensions: ["xlsx"] }]
+    });
+
+    if (saveResult.canceled || !saveResult.filePath) return { canceled: true };
+
+    const workbook = XLSX.utils.book_new();
+
+    const totalsRows = [
+      { "شاخص": "دریافتی کل از کارفرما", "مقدار": Number(report.totals.totalClientReceived || 0) },
+      { "شاخص": "قابل پرداخت کل به همکار", "مقدار": Number(report.totals.totalPartnerDue || 0) },
+      { "شاخص": "پرداخت‌شده کل به همکار", "مقدار": Number(report.totals.totalPartnerPaid || 0) },
+      { "شاخص": "سود خالص انتظاری", "مقدار": Number(report.totals.totalExpectedNetProfit || 0) },
+      { "شاخص": "سود خالص تحقق‌یافته", "مقدار": Number(report.totals.totalRealizedNetProfit || 0) }
+    ];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(totalsRows), "خلاصه سود");
+
+    const projectRows = (report.projects || []).map((row) => ({
+      "شناسه پروژه": Number(row.projectId || 0),
+      "پروژه": row.projectTitle || "",
+      "کارفرما": row.clientName || "",
+      "وضعیت": row.status || "",
+      "دریافتی از کارفرما": Number(row.clientReceived || 0),
+      "قابل پرداخت به همکار": Number(row.partnerDue || 0),
+      "پرداخت‌شده به همکار": Number(row.partnerPaid || 0),
+      "مانده همکار": Number(row.partnerRemaining || 0),
+      "سود خالص انتظاری": Number(row.expectedNetProfit || 0),
+      "سود خالص تحقق‌یافته": Number(row.realizedNetProfit || 0)
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(projectRows), "پروژه‌ها");
+
+    const partnerRows = (report.partners || []).map((row) => ({
+      "شناسه همکار": Number(row.partnerId || 0),
+      "همکار": row.partnerName || "",
+      "تعداد پروژه": Number(row.projectsCount || 0),
+      "قابل پرداخت": Number(row.dueAmount || 0),
+      "پرداخت‌شده": Number(row.paidAmount || 0),
+      "مانده": Number(row.remainingAmount || 0)
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(partnerRows), "همکاران");
+
+    XLSX.writeFile(workbook, saveResult.filePath);
+    return { canceled: false, filePath: saveResult.filePath };
+  });
+
+  ipcMain.handle("reports:project-profit:export:pdf", async () => {
+    const report = getProjectProfitReport();
+    const saveResult = await dialog.showSaveDialog(mainWindow, {
+      title: "ذخیره گزارش سود پروژه/همکار (PDF)",
+      defaultPath: "birino-project-profit-report.pdf",
+      filters: [{ name: "PDF", extensions: ["pdf"] }]
+    });
+
+    if (saveResult.canceled || !saveResult.filePath) return { canceled: true };
+
+    const totalsRows = [
+      ["دریافتی کل از کارفرما", report.totals.totalClientReceived],
+      ["قابل پرداخت کل به همکار", report.totals.totalPartnerDue],
+      ["پرداخت‌شده کل به همکار", report.totals.totalPartnerPaid],
+      ["سود خالص انتظاری", report.totals.totalExpectedNetProfit],
+      ["سود خالص تحقق‌یافته", report.totals.totalRealizedNetProfit]
+    ]
+      .map(([label, value]) => `<tr><td>${label}</td><td>${String(value ?? 0)}</td></tr>`)
+      .join("");
+
+    const projectRows = (report.projects || [])
+      .map(
+        (row) => `
+        <tr>
+          <td>${String(row.projectTitle || "-")}</td>
+          <td>${String(row.clientName || "-")}</td>
+          <td>${String(row.clientReceived ?? 0)}</td>
+          <td>${String(row.partnerDue ?? 0)}</td>
+          <td>${String(row.partnerPaid ?? 0)}</td>
+          <td>${String(row.expectedNetProfit ?? 0)}</td>
+          <td>${String(row.realizedNetProfit ?? 0)}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const partnerRows = (report.partners || [])
+      .map(
+        (row) => `
+        <tr>
+          <td>${String(row.partnerName || "-")}</td>
+          <td>${String(row.projectsCount ?? 0)}</td>
+          <td>${String(row.dueAmount ?? 0)}</td>
+          <td>${String(row.paidAmount ?? 0)}</td>
+          <td>${String(row.remainingAmount ?? 0)}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const html = `<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: Tahoma, sans-serif; padding: 24px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: right; }
+    h2, h3 { margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <h2>گزارش سود پروژه/همکار بیرینو</h2>
+  <h3>خلاصه</h3>
+  <table><tbody>${totalsRows}</tbody></table>
+  <h3>پروژه‌ها</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>پروژه</th><th>کارفرما</th><th>دریافتی</th><th>قابل پرداخت</th><th>پرداخت‌شده</th><th>سود انتظاری</th><th>سود تحقق‌یافته</th>
+      </tr>
+    </thead>
+    <tbody>${projectRows}</tbody>
+  </table>
+  <h3>همکاران</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>همکار</th><th>تعداد پروژه</th><th>قابل پرداخت</th><th>پرداخت‌شده</th><th>مانده</th>
+      </tr>
+    </thead>
+    <tbody>${partnerRows}</tbody>
+  </table>
+</body>
+</html>`;
+
+    const printWindow = new BrowserWindow({
+      show: false,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
+    });
+    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     const pdfBuffer = await printWindow.webContents.printToPDF({
       printBackground: true,
       preferCSSPageSize: true

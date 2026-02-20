@@ -33,6 +33,8 @@ const invokeChannels = new Set([
   "reports:project-profit",
   "reports:export:excel",
   "reports:export:pdf",
+  "reports:project-profit:export:excel",
+  "reports:project-profit:export:pdf",
   "system:backup:settings:get",
   "system:backup:settings:update",
   "system:backup:auto:run",
