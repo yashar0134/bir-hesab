@@ -95,3 +95,18 @@ What these scripts do:
 4. Trigger GitHub Action to build and publish release assets
 
 After GitHub Action finishes, clients receive update through app updater.
+
+## Manual Publish (Fallback / Deterministic)
+
+If GitHub Actions release build is unavailable, publish assets directly from your machine:
+
+```bash
+npm run release:publish
+```
+
+This command:
+
+1. Builds Windows installer locally (`build:win`)
+2. Generates `dist/SHA256SUMS.txt`
+3. Creates release for current tag if missing
+4. Uploads installer + checksum to the release
