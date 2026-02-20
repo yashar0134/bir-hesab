@@ -1,6 +1,6 @@
 {
   "name": "bir-hesab",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Bir Hesab - Offline-first Persian accounting desktop app",
   "main": "src/main.js",
   "scripts": {
