@@ -30,9 +30,31 @@ function Resolve-GitExecutable {
 }
 
 function Resolve-NpmExecutable {
+  $npmCmdCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+  if ($npmCmdCommand -and $npmCmdCommand.Source) {
+    return $npmCmdCommand.Source
+  }
+
   $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
   if ($npmCommand -and $npmCommand.Source) {
+    if ($npmCommand.Source -like "*.ps1") {
+      $npmCmdSibling = [System.IO.Path]::ChangeExtension($npmCommand.Source, ".cmd")
+      if (Test-Path $npmCmdSibling) {
+        return $npmCmdSibling
+      }
+    }
     return $npmCommand.Source
+  }
+
+  $candidates = @(
+    "C:\Program Files\nodejs\npm.cmd",
+    "$env:LOCALAPPDATA\Programs\nodejs\npm.cmd"
+  )
+
+  foreach ($candidate in $candidates) {
+    if (Test-Path $candidate) {
+      return $candidate
+    }
   }
 
   throw "npm command not found. Install Node.js first, then run this script again."
