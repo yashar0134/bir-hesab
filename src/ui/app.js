@@ -1021,6 +1021,43 @@ async function initCashboxSection() {
   await refresh();
 }
 
+function setupBackupEvents() {
+  const backupBtn = document.getElementById("createBackupBtn");
+  const restoreBtn = document.getElementById("restoreBackupBtn");
+  if (!backupBtn || !restoreBtn) return;
+
+  backupBtn.addEventListener("click", async () => {
+    backupBtn.disabled = true;
+    const prevLabel = backupBtn.textContent;
+    backupBtn.textContent = "در حال ساخت پشتیبان...";
+    try {
+      const result = await window.birHesab.invoke("system:backup:create");
+      if (!result?.canceled) {
+        alert("فایل پشتیبان با موفقیت ذخیره شد.");
+      }
+    } catch (error) {
+      alert(`خطا در پشتیبان‌گیری: ${error.message}`);
+    } finally {
+      backupBtn.disabled = false;
+      backupBtn.textContent = prevLabel;
+    }
+  });
+
+  restoreBtn.addEventListener("click", async () => {
+    restoreBtn.disabled = true;
+    const prevLabel = restoreBtn.textContent;
+    restoreBtn.textContent = "در حال بازیابی...";
+    try {
+      await window.birHesab.invoke("system:backup:restore");
+    } catch (error) {
+      alert(`خطا در بازیابی پشتیبان: ${error.message}`);
+    } finally {
+      restoreBtn.disabled = false;
+      restoreBtn.textContent = prevLabel;
+    }
+  });
+}
+
 function setupUpdaterEvents() {
   const status = document.getElementById("updateStatus");
   const checkBtn = document.getElementById("checkUpdateBtn");
@@ -1192,6 +1229,7 @@ async function bootstrap() {
   setupHelpModal();
   await initSidebar();
   await renderSection();
+  setupBackupEvents();
   setupUpdaterEvents();
 }
 

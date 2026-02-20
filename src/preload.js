@@ -32,6 +32,8 @@ const invokeChannels = new Set([
   "reports:business",
   "reports:export:excel",
   "reports:export:pdf",
+  "system:backup:create",
+  "system:backup:restore",
   "updater:check",
   "updater:download",
   "updater:install"

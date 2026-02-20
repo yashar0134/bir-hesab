@@ -14,6 +14,26 @@ const { registerUpdaterHandlers } = require("./modules/updater.js");
 let mainWindow;
 let db;
 
+function getDatabasePath() {
+  return path.join(app.getPath("userData"), "bir-hesab.db");
+}
+
+function getBackupFileName() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  return `bir-hesab-backup-${yyyy}${mm}${dd}-${hh}${min}.db`;
+}
+
+function unlinkIfExists(filePath) {
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1360,
@@ -42,6 +62,79 @@ function createWindow() {
     if (!url.startsWith("file://")) {
       event.preventDefault();
     }
+  });
+}
+
+function registerDataHandlers() {
+  ipcMain.handle("system:backup:create", async () => {
+    const dbPath = getDatabasePath();
+    const saveResult = await dialog.showSaveDialog(mainWindow, {
+      title: "ذخیره فایل پشتیبان",
+      defaultPath: path.join(app.getPath("documents"), getBackupFileName()),
+      filters: [
+        { name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] },
+        { name: "All Files", extensions: ["*"] }
+      ]
+    });
+
+    if (saveResult.canceled || !saveResult.filePath) {
+      return { canceled: true };
+    }
+
+    db.pragma("wal_checkpoint(TRUNCATE)");
+    fs.copyFileSync(dbPath, saveResult.filePath);
+
+    return {
+      canceled: false,
+      filePath: saveResult.filePath
+    };
+  });
+
+  ipcMain.handle("system:backup:restore", async () => {
+    const openResult = await dialog.showOpenDialog(mainWindow, {
+      title: "انتخاب فایل پشتیبان",
+      filters: [{ name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] }],
+      properties: ["openFile"]
+    });
+
+    if (openResult.canceled || !openResult.filePaths?.length) {
+      return { canceled: true };
+    }
+
+    const backupPath = openResult.filePaths[0];
+    const dbPath = getDatabasePath();
+
+    if (path.resolve(backupPath) === path.resolve(dbPath)) {
+      throw new Error("فایل انتخابی همان دیتابیس فعلی است.");
+    }
+
+    const confirmResult = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      title: "بازیابی پشتیبان",
+      message:
+        "با بازیابی پشتیبان، داده‌های فعلی جایگزین می‌شوند. بعد از تایید، برنامه ری‌استارت می‌شود.",
+      buttons: ["ادامه", "لغو"],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true
+    });
+
+    if (confirmResult.response !== 0) {
+      return { canceled: true };
+    }
+
+    if (db) {
+      db.close();
+    }
+
+    unlinkIfExists(dbPath);
+    unlinkIfExists(`${dbPath}-wal`);
+    unlinkIfExists(`${dbPath}-shm`);
+    fs.copyFileSync(backupPath, dbPath);
+
+    app.relaunch();
+    app.exit(0);
+    return { canceled: false, restarting: true };
   });
 }
 
@@ -245,6 +338,7 @@ app
     registerExpenseHandlers(ipcMain, db);
     registerCashboxHandlers(ipcMain, db);
     registerReportHandlers();
+    registerDataHandlers();
 
     createWindow();
     registerUpdaterHandlers(ipcMain, () => mainWindow, app);
