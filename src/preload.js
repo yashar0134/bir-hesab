@@ -30,6 +30,7 @@ const invokeChannels = new Set([
   "cashbox:update",
   "cashbox:delete",
   "reports:business",
+  "reports:project-profit",
   "reports:export:excel",
   "reports:export:pdf",
   "system:backup:settings:get",

@@ -393,6 +393,126 @@ function registerReportHandlers() {
     return { totals, monthly, yearly };
   });
 
+  ipcMain.handle("reports:project-profit", () => {
+    const projectRows = db
+      .prepare(
+        `
+        WITH client_by_project AS (
+          SELECT project_id, SUM(amount) AS clientReceived
+          FROM settlements
+          WHERE settlement_type = 'client'
+          GROUP BY project_id
+        ),
+        partner_paid_by_project AS (
+          SELECT project_id, SUM(amount) AS partnerPaid
+          FROM settlements
+          WHERE settlement_type = 'partner'
+          GROUP BY project_id
+        ),
+        terms_due_by_project AS (
+          SELECT
+            t.project_id AS projectId,
+            SUM(
+              CASE
+                WHEN t.payment_model = 'percent'
+                  THEN COALESCE(c.clientReceived, 0) * t.percent_value / 100.0
+                ELSE t.salary_amount
+              END
+            ) AS partnerDue
+          FROM partner_project_terms t
+          LEFT JOIN client_by_project c ON c.project_id = t.project_id
+          GROUP BY t.project_id
+        )
+        SELECT
+          p.id AS projectId,
+          p.title AS projectTitle,
+          p.client_name AS clientName,
+          p.status,
+          COALESCE(c.clientReceived, 0) AS clientReceived,
+          COALESCE(d.partnerDue, 0) AS partnerDue,
+          COALESCE(pp.partnerPaid, 0) AS partnerPaid,
+          COALESCE(d.partnerDue, 0) - COALESCE(pp.partnerPaid, 0) AS partnerRemaining,
+          COALESCE(c.clientReceived, 0) - COALESCE(d.partnerDue, 0) AS expectedNetProfit,
+          COALESCE(c.clientReceived, 0) - COALESCE(pp.partnerPaid, 0) AS realizedNetProfit
+        FROM projects p
+        LEFT JOIN client_by_project c ON c.project_id = p.id
+        LEFT JOIN terms_due_by_project d ON d.projectId = p.id
+        LEFT JOIN partner_paid_by_project pp ON pp.project_id = p.id
+        ORDER BY p.id DESC
+      `
+      )
+      .all();
+
+    const partnerRows = db
+      .prepare(
+        `
+        WITH client_by_project AS (
+          SELECT project_id, SUM(amount) AS clientReceived
+          FROM settlements
+          WHERE settlement_type = 'client'
+          GROUP BY project_id
+        ),
+        term_due_totals AS (
+          SELECT
+            t.partner_id AS partnerId,
+            COUNT(DISTINCT t.project_id) AS projectsCount,
+            SUM(
+              CASE
+                WHEN t.payment_model = 'percent'
+                  THEN COALESCE(c.clientReceived, 0) * t.percent_value / 100.0
+                ELSE t.salary_amount
+              END
+            ) AS dueAmount
+          FROM partner_project_terms t
+          LEFT JOIN client_by_project c ON c.project_id = t.project_id
+          GROUP BY t.partner_id
+        ),
+        partner_paid_totals AS (
+          SELECT related_id AS partnerId, SUM(amount) AS paidAmount
+          FROM settlements
+          WHERE settlement_type = 'partner' AND related_id IS NOT NULL
+          GROUP BY related_id
+        )
+        SELECT
+          p.id AS partnerId,
+          p.full_name AS partnerName,
+          COALESCE(td.projectsCount, 0) AS projectsCount,
+          COALESCE(td.dueAmount, 0) AS dueAmount,
+          COALESCE(pp.paidAmount, 0) AS paidAmount,
+          COALESCE(td.dueAmount, 0) - COALESCE(pp.paidAmount, 0) AS remainingAmount
+        FROM partners p
+        LEFT JOIN term_due_totals td ON td.partnerId = p.id
+        LEFT JOIN partner_paid_totals pp ON pp.partnerId = p.id
+        ORDER BY remainingAmount DESC, p.id DESC
+      `
+      )
+      .all();
+
+    const totals = projectRows.reduce(
+      (acc, row) => {
+        acc.totalClientReceived += Number(row.clientReceived || 0);
+        acc.totalPartnerDue += Number(row.partnerDue || 0);
+        acc.totalPartnerPaid += Number(row.partnerPaid || 0);
+        acc.totalExpectedNetProfit += Number(row.expectedNetProfit || 0);
+        acc.totalRealizedNetProfit += Number(row.realizedNetProfit || 0);
+        return acc;
+      },
+      {
+        totalClientReceived: 0,
+        totalPartnerDue: 0,
+        totalPartnerPaid: 0,
+        totalExpectedNetProfit: 0,
+        totalRealizedNetProfit: 0
+      }
+    );
+
+    return {
+      totals,
+      projects: projectRows,
+      partners: partnerRows
+    };
+  });
+
   ipcMain.handle("reports:export:excel", async (_, payload) => {
     const defaultName = "birino-report.xlsx";
     const saveResult = await dialog.showSaveDialog(mainWindow, {

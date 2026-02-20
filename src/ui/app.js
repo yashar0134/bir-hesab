@@ -298,6 +298,7 @@ async function exportReport(type, kind, report) {
 
 async function initBirinoDashboard() {
   const report = await window.birHesab.invoke("reports:business");
+  const profitReport = await window.birHesab.invoke("reports:project-profit");
   const stats = [
     { label: "درآمد کل", value: formatCurrency(report.totals.totalIncome) },
     { label: "خروجی کل", value: formatCurrency(report.totals.totalOutcome) },
@@ -325,6 +326,52 @@ async function initBirinoDashboard() {
 
   document.getElementById("exportBusinessExcel")?.addEventListener("click", () => exportReport("business", "excel", report));
   document.getElementById("exportBusinessPdf")?.addEventListener("click", () => exportReport("business", "pdf", report));
+
+  const projectProfitRows = document.getElementById("projectProfitRows");
+  if (projectProfitRows) {
+    projectProfitRows.innerHTML = (profitReport.projects || [])
+      .map(
+        (row) => `
+          <tr>
+            <td>${row.projectTitle || "-"}</td>
+            <td>${row.clientName || "-"}</td>
+            <td>${formatCurrency(row.clientReceived)}</td>
+            <td>${formatCurrency(row.partnerDue)}</td>
+            <td>${formatCurrency(row.partnerPaid)}</td>
+            <td>${formatCurrency(row.expectedNetProfit)}</td>
+            <td>${formatCurrency(row.realizedNetProfit)}</td>
+          </tr>
+        `
+      )
+      .join("");
+  }
+
+  const partnerProfitRows = document.getElementById("partnerProfitRows");
+  if (partnerProfitRows) {
+    partnerProfitRows.innerHTML = (profitReport.partners || [])
+      .map(
+        (row) => `
+          <tr>
+            <td>${row.partnerName || "-"}</td>
+            <td>${toPersianDigits(row.projectsCount || 0)}</td>
+            <td>${formatCurrency(row.dueAmount)}</td>
+            <td>${formatCurrency(row.paidAmount)}</td>
+            <td>${formatCurrency(row.remainingAmount)}</td>
+          </tr>
+        `
+      )
+      .join("");
+  }
+
+  const projectProfitSummary = document.getElementById("projectProfitSummary");
+  if (projectProfitSummary) {
+    const t = profitReport.totals || {};
+    projectProfitSummary.textContent =
+      `دریافتی کل: ${formatCurrency(t.totalClientReceived)} | ` +
+      `قابل پرداخت کل: ${formatCurrency(t.totalPartnerDue)} | ` +
+      `سود خالص انتظاری: ${formatCurrency(t.totalExpectedNetProfit)} | ` +
+      `سود خالص تحقق‌یافته: ${formatCurrency(t.totalRealizedNetProfit)}`;
+  }
 }
 async function initServicesSection() {
   const form = document.getElementById("serviceForm");
