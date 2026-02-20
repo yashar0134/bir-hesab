@@ -132,19 +132,21 @@ if ($Version) {
 
 $tagName = "v$targetVersion"
 
-$localTag = (& $GitExe tag --list $tagName).Trim()
+$localTagOutput = & $GitExe tag --list $tagName
 if ($LASTEXITCODE -ne 0) {
   throw "Unable to check local tags."
 }
-if ($localTag) {
+$localTag = [string]$localTagOutput
+if (-not [string]::IsNullOrWhiteSpace($localTag)) {
   throw "Tag '$tagName' already exists locally."
 }
 
-$remoteTag = & $GitExe ls-remote --tags origin "refs/tags/$tagName"
+$remoteTagOutput = & $GitExe ls-remote --tags origin "refs/tags/$tagName"
 if ($LASTEXITCODE -ne 0) {
   throw "Unable to check remote tags."
 }
-if ($remoteTag) {
+$remoteTag = [string]$remoteTagOutput
+if (-not [string]::IsNullOrWhiteSpace($remoteTag)) {
   throw "Tag '$tagName' already exists on origin."
 }
 
