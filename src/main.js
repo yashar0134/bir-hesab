@@ -7,6 +7,7 @@ const { registerServiceHandlers } = require("./modules/services.js");
 const { registerProjectHandlers } = require("./modules/projects.js");
 const { registerPartnerHandlers } = require("./modules/partners.js");
 const { registerSettlementHandlers } = require("./modules/settlements.js");
+const { registerReminderHandlers } = require("./modules/reminders.js");
 const { registerExpenseHandlers } = require("./modules/expenses.js");
 const { registerCashboxHandlers } = require("./modules/cashbox.js");
 const { registerUpdaterHandlers } = require("./modules/updater.js");
@@ -822,6 +823,7 @@ app
     registerProjectHandlers(ipcMain, db);
     registerPartnerHandlers(ipcMain, db);
     registerSettlementHandlers(ipcMain, db);
+    registerReminderHandlers(ipcMain, db);
     registerExpenseHandlers(ipcMain, db);
     registerCashboxHandlers(ipcMain, db);
     registerReportHandlers();

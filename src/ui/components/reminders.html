@@ -1,0 +1,79 @@
+<section class="section-card">
+  <h2 class="section-title">تقویم شمسی و ریمایندرها</h2>
+  <div class="calendar-toolbar">
+    <button id="calendarPrevMonth" class="btn-secondary" type="button">ماه قبل</button>
+    <h3 id="calendarMonthTitle" class="calendar-month-title">-</h3>
+    <button id="calendarNextMonth" class="btn-secondary" type="button">ماه بعد</button>
+  </div>
+  <div class="calendar-weekdays">
+    <span>شنبه</span>
+    <span>یکشنبه</span>
+    <span>دوشنبه</span>
+    <span>سه‌شنبه</span>
+    <span>چهارشنبه</span>
+    <span>پنجشنبه</span>
+    <span>جمعه</span>
+  </div>
+  <div id="jalaliCalendarGrid" class="jalali-calendar-grid"></div>
+  <div class="calendar-legend">
+    <span class="legend-chip reminder">یادآور</span>
+    <span class="legend-chip receive">دریافتی</span>
+    <span class="legend-chip pay">پرداختی</span>
+  </div>
+  <p id="calendarDayDetails" class="list-note">برای مشاهده جزئیات، یک روز را انتخاب کنید.</p>
+</section>
+
+<section class="section-card">
+  <h3 class="section-title">ثبت ریمایندر</h3>
+  <form id="reminderForm">
+    <div class="grid-3">
+      <div>
+        <label for="reminderDate">تاریخ</label>
+        <input
+          id="reminderDate"
+          type="text"
+          data-jdp
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="1404/01/01"
+          required
+        />
+      </div>
+      <div>
+        <label for="reminderTitle">عنوان</label>
+        <input id="reminderTitle" maxlength="120" required />
+      </div>
+      <div>
+        <label for="reminderDone">وضعیت</label>
+        <select id="reminderDone">
+          <option value="0">باز</option>
+          <option value="1">انجام‌شده</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label for="reminderDescription">توضیحات</label>
+      <textarea id="reminderDescription"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" type="submit">ذخیره ریمایندر</button>
+      <button id="reminderFormReset" class="btn-secondary" type="button">پاکسازی فرم</button>
+    </div>
+  </form>
+</section>
+
+<section class="section-card">
+  <h3 class="section-title">لیست ریمایندرها</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>عنوان</th>
+        <th>تاریخ</th>
+        <th>وضعیت</th>
+        <th>توضیحات</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody id="remindersRows"></tbody>
+  </table>
+</section>

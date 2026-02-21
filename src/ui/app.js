@@ -10,6 +10,7 @@ const sectionMap = {
   services: "components/services.html",
   projects: "components/projects.html",
   settlements: "components/settlements.html",
+  reminders: "components/reminders.html",
   expenses: "components/expenses.html",
   cashbox: "components/cashbox.html"
 };
@@ -23,6 +24,8 @@ const helpMap = {
     "🗂️ اینجا پروژه را می‌سازی.\n\n✅ قدم‌ها:\n۱) عنوان پروژه را بنویس.\n۲) نام کارفرما را بنویس.\n۳) چند خدمت برای پروژه انتخاب کن.\n۴) وضعیت پروژه را تعیین کن.\n\n👶 مثال:\nپروژه: کلیپ اینستاگرام\nکارفرما: شرکت آلفا\nخدمات: فیلمبرداری + تدوین",
   settlements:
     "🤝 مهم‌ترین بخش محاسبه همینجاست.\n\n✅ کار همکار درصدی:\nبرای هر پروژه درصد جدا بگذار (مثلاً علی در پروژه A = ۳۰٪ و پروژه B = ۵۰٪).\n\n✅ کار همکار حقوقی:\nمدل را روی حقوق هفتگی یا ماهانه بگذار و مبلغ حقوق ثبت کن.\n\n👶 مثال:\nاز پروژه A مبلغ ۱۰ میلیون گرفتی.\nاگر سهم علی ۳۰٪ باشد، قابل پرداخت علی = ۳ میلیون.\nاگر ۱ میلیون داده باشی، مانده = ۲ میلیون.",
+  reminders:
+    "📅 اینجا یک تقویم شمسی کامل داری.\n\n✅ چه چیزی می‌بینی؟\n۱) یادآورها روی روزها\n۲) جمع دریافتی‌ها و پرداختی‌های همان روز\n\n✅ چه کاری می‌تونی بکنی؟\nثبت/ویرایش/حذف یادآور و علامت‌زدن انجام‌شده.",
   expenses:
     "🧾 هر پولی که خرج می‌کنی اینجا ثبت کن.\n\n✅ قدم‌ها:\n۱) دامنه هزینه را انتخاب کن.\n۲) دسته‌بندی را بنویس.\n۳) مبلغ را بزن.\n\n👶 مثال:\nدامنه: کسب‌وکار\nدسته: اینترنت\nمبلغ: ۳۰۰,۰۰۰ تومان",
   cashbox:
@@ -34,6 +37,7 @@ const quickGuideMap = {
   services: ["۱️⃣ اسم خدمت", "۲️⃣ مدل قیمت", "۳️⃣ ثبت نرخ", "✅ ذخیره"],
   projects: ["۱️⃣ اسم پروژه", "۲️⃣ انتخاب خدمات", "۳️⃣ انتخاب وضعیت", "✅ ثبت"],
   settlements: ["۱️⃣ تعریف همکار", "۲️⃣ شرط پروژه", "۳️⃣ ثبت تسویه", "✅ دیدن مانده"],
+  reminders: ["۱️⃣ انتخاب روز", "۲️⃣ ثبت یادآور", "۳️⃣ دیدن دریافتی/پرداختی", "✅ پیگیری روزانه"],
   expenses: ["۱️⃣ انتخاب دامنه", "۲️⃣ ثبت مبلغ", "۳️⃣ ثبت تاریخ", "✅ ذخیره"],
   cashbox: ["۱️⃣ ثبت مبلغ", "۲️⃣ ثبت تاریخ", "۳️⃣ ثبت توضیح", "✅ دکمه دخل یا خرج"]
 };
@@ -110,6 +114,181 @@ function inDateRange(dateValue, fromValue, toValue) {
   if (from && key < from) return false;
   if (to && key > to) return false;
   return true;
+}
+
+function parseJalaliDate(dateValue) {
+  const normalized = normalizeDigits(String(dateValue || "")).trim();
+  const match = normalized.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return null;
+  const jy = Number(match[1]);
+  const jm = Number(match[2]);
+  const jd = Number(match[3]);
+  if (jm < 1 || jm > 12 || jd < 1) return null;
+  try {
+    if (jd > jalaliMonthLength(jy, jm)) return null;
+  } catch {
+    return null;
+  }
+  return { jy, jm, jd };
+}
+
+function formatJalaliDateParts(jy, jm, jd) {
+  return `${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")}`;
+}
+
+function toCanonicalJalaliDate(dateValue) {
+  const parsed = parseJalaliDate(dateValue);
+  if (parsed) {
+    return formatJalaliDateParts(parsed.jy, parsed.jm, parsed.jd);
+  }
+  return normalizeDigits(String(dateValue || "")).trim();
+}
+
+function div(a, b) {
+  return Math.trunc(a / b);
+}
+
+function mod(a, b) {
+  return a - Math.trunc(a / b) * b;
+}
+
+function g2d(gy, gm, gd) {
+  let d =
+    div((gy + div(gm - 8, 6) + 100100) * 1461, 4) +
+    div(153 * mod(gm + 9, 12) + 2, 5) +
+    gd -
+    34840408;
+  d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;
+  return d;
+}
+
+function d2g(jdn) {
+  let j = 4 * jdn + 139361631;
+  j += div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;
+  const i = div(mod(j, 1461), 4) * 5 + 308;
+  const gd = div(mod(i, 153), 5) + 1;
+  const gm = mod(div(i, 153), 12) + 1;
+  const gy = div(j, 1461) - 100100 + div(8 - gm, 6);
+  return { gy, gm, gd };
+}
+
+function jalCal(jy) {
+  const breaks = [
+    -61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635,
+    2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178
+  ];
+  const bl = breaks.length;
+  const gy = jy + 621;
+  let leapJ = -14;
+  let jp = breaks[0];
+  let jump = 0;
+  let jm;
+  let n;
+  let i;
+
+  if (jy < jp || jy >= breaks[bl - 1]) {
+    throw new Error("Invalid Jalaali year");
+  }
+
+  for (i = 1; i < bl; i += 1) {
+    jm = breaks[i];
+    jump = jm - jp;
+    if (jy < jm) {
+      break;
+    }
+    leapJ += div(jump, 33) * 8 + div(mod(jump, 33), 4);
+    jp = jm;
+  }
+  n = jy - jp;
+
+  leapJ += div(n, 33) * 8 + div(mod(n, 33) + 3, 4);
+  if (mod(jump, 33) === 4 && jump - n === 4) {
+    leapJ += 1;
+  }
+
+  const leapG = div(gy, 4) - div((div(gy, 100) + 1) * 3, 4) - 150;
+  const march = 20 + leapJ - leapG;
+
+  if (jump - n < 6) {
+    n = n - jump + div(jump + 4, 33) * 33;
+  }
+  let leap = mod(mod(n + 1, 33) - 1, 4);
+  if (leap === -1) {
+    leap = 4;
+  }
+
+  return { leap, gy, march };
+}
+
+function j2d(jy, jm, jd) {
+  const r = jalCal(jy);
+  return g2d(r.gy, 3, r.march) + (jm - 1) * 31 - div(jm, 7) * (jm - 7) + jd - 1;
+}
+
+function d2j(jdn) {
+  const g = d2g(jdn);
+  let jy = g.gy - 621;
+  const r = jalCal(jy);
+  const jdn1f = g2d(g.gy, 3, r.march);
+  let k = jdn - jdn1f;
+  let jd;
+  let jm;
+
+  if (k >= 0) {
+    if (k <= 185) {
+      jm = 1 + div(k, 31);
+      jd = mod(k, 31) + 1;
+      return { jy, jm, jd };
+    }
+    k -= 186;
+  } else {
+    jy -= 1;
+    k += 179;
+    if (r.leap === 1) {
+      k += 1;
+    }
+  }
+  jm = 7 + div(k, 30);
+  jd = mod(k, 30) + 1;
+  return { jy, jm, jd };
+}
+
+function toGregorian(jy, jm, jd) {
+  return d2g(j2d(jy, jm, jd));
+}
+
+function isLeapJalaliYear(jy) {
+  return jalCal(jy).leap === 0;
+}
+
+function jalaliMonthLength(jy, jm) {
+  if (jm <= 6) return 31;
+  if (jm <= 11) return 30;
+  return isLeapJalaliYear(jy) ? 30 : 29;
+}
+
+function jalaliWeekdayIndex(jy, jm, jd) {
+  const g = toGregorian(jy, jm, jd);
+  const day = new Date(g.gy, g.gm - 1, g.gd).getDay();
+  return (day + 1) % 7;
+}
+
+function jalaliMonthLabel(jy, jm) {
+  const monthNames = [
+    "فروردین",
+    "اردیبهشت",
+    "خرداد",
+    "تیر",
+    "مرداد",
+    "شهریور",
+    "مهر",
+    "آبان",
+    "آذر",
+    "دی",
+    "بهمن",
+    "اسفند"
+  ];
+  return `${monthNames[jm - 1] || ""} ${toPersianDigits(jy)}`;
 }
 
 function textMatch(query, ...fields) {
@@ -246,6 +425,7 @@ async function initSectionLogic(section) {
   if (section === "services") return initServicesSection();
   if (section === "projects") return initProjectsSection();
   if (section === "settlements") return initSettlementsSection();
+  if (section === "reminders") return initRemindersSection();
   if (section === "expenses") return initExpensesSection();
   if (section === "cashbox") return initCashboxSection();
 }
@@ -391,6 +571,325 @@ async function initBirinoDashboard() {
     }
   });
 }
+
+async function initRemindersSection() {
+  const reminderForm = document.getElementById("reminderForm");
+  const reminderDateInput = document.getElementById("reminderDate");
+  const reminderTitleInput = document.getElementById("reminderTitle");
+  const reminderDescInput = document.getElementById("reminderDescription");
+  const reminderDoneInput = document.getElementById("reminderDone");
+  const reminderFormReset = document.getElementById("reminderFormReset");
+  const remindersRows = document.getElementById("remindersRows");
+  const calendarGrid = document.getElementById("jalaliCalendarGrid");
+  const monthTitle = document.getElementById("calendarMonthTitle");
+  const prevMonthBtn = document.getElementById("calendarPrevMonth");
+  const nextMonthBtn = document.getElementById("calendarNextMonth");
+  const dayDetails = document.getElementById("calendarDayDetails");
+
+  const today = parseJalaliDate(getTodayJalaliDate()) || { jy: 1404, jm: 1, jd: 1 };
+  let viewYear = today.jy;
+  let viewMonth = today.jm;
+  let selectedDate = formatJalaliDateParts(today.jy, today.jm, today.jd);
+  let editingReminderId = null;
+  let reminders = [];
+  let settlements = [];
+
+  const normalizeReminderRows = (rows) =>
+    (rows || []).map((row) => ({
+      ...row,
+      reminderDate: toCanonicalJalaliDate(row.reminderDate),
+      isDone: Number(row.isDone || 0)
+    }));
+
+  const normalizeSettlementRows = (rows) =>
+    (rows || []).map((row) => ({
+      ...row,
+      settlementDate: toCanonicalJalaliDate(row.settlementDate),
+      amount: Number(row.amount || 0)
+    }));
+
+  const buildDayMap = () => {
+    const map = new Map();
+    const ensure = (key) => {
+      if (!map.has(key)) {
+        map.set(key, {
+          reminders: [],
+          settlements: [],
+          receivable: 0,
+          payable: 0
+        });
+      }
+      return map.get(key);
+    };
+
+    reminders.forEach((item) => {
+      const key = toDateKey(item.reminderDate);
+      if (!key) return;
+      ensure(key).reminders.push(item);
+    });
+
+    settlements.forEach((item) => {
+      const key = toDateKey(item.settlementDate);
+      if (!key) return;
+      const bucket = ensure(key);
+      bucket.settlements.push(item);
+      if (item.settlementType === "client") {
+        bucket.receivable += Number(item.amount || 0);
+      } else {
+        bucket.payable += Number(item.amount || 0);
+      }
+    });
+
+    return map;
+  };
+
+  const renderDayDetails = (dayMap) => {
+    const key = toDateKey(selectedDate);
+    const bucket = dayMap.get(key);
+    if (!bucket) {
+      dayDetails.textContent = `برای تاریخ ${toPersianDigits(selectedDate)} موردی ثبت نشده است.`;
+      return;
+    }
+
+    const reminderLines = bucket.reminders
+      .map((item) => `• ${item.title}${item.isDone ? " (انجام‌شده)" : ""}`)
+      .join("<br>");
+    const settlementLines = bucket.settlements
+      .map((item) => {
+        const typeLabel = item.settlementType === "client" ? "دریافتی" : "پرداختی";
+        const project = item.projectTitle ? ` - ${item.projectTitle}` : "";
+        return `• ${typeLabel}: ${formatCurrency(item.amount)}${project}`;
+      })
+      .join("<br>");
+
+    dayDetails.innerHTML = `
+      <strong>${toPersianDigits(selectedDate)}</strong><br>
+      ${bucket.reminders.length ? `<span>یادآورها:</span><br>${reminderLines}<br>` : ""}
+      ${bucket.settlements.length ? `<span>تراکنش‌ها:</span><br>${settlementLines}` : ""}
+    `;
+  };
+
+  const renderCalendar = () => {
+    const dayMap = buildDayMap();
+    monthTitle.textContent = jalaliMonthLabel(viewYear, viewMonth);
+
+    const daysInMonth = jalaliMonthLength(viewYear, viewMonth);
+    const firstWeekday = jalaliWeekdayIndex(viewYear, viewMonth, 1);
+
+    const prevYear = viewMonth === 1 ? viewYear - 1 : viewYear;
+    const prevMonth = viewMonth === 1 ? 12 : viewMonth - 1;
+    const prevMonthDays = jalaliMonthLength(prevYear, prevMonth);
+
+    const nextYear = viewMonth === 12 ? viewYear + 1 : viewYear;
+    const nextMonth = viewMonth === 12 ? 1 : viewMonth + 1;
+
+    const cells = [];
+    for (let i = 0; i < 42; i += 1) {
+      let jy = viewYear;
+      let jm = viewMonth;
+      let jd = 0;
+      let inCurrentMonth = true;
+
+      if (i < firstWeekday) {
+        inCurrentMonth = false;
+        jy = prevYear;
+        jm = prevMonth;
+        jd = prevMonthDays - firstWeekday + i + 1;
+      } else if (i >= firstWeekday + daysInMonth) {
+        inCurrentMonth = false;
+        jy = nextYear;
+        jm = nextMonth;
+        jd = i - (firstWeekday + daysInMonth) + 1;
+      } else {
+        jd = i - firstWeekday + 1;
+      }
+
+      const dateStr = formatJalaliDateParts(jy, jm, jd);
+      const key = toDateKey(dateStr);
+      const bucket = dayMap.get(key);
+      const reminderCount = bucket?.reminders?.length || 0;
+      const receivable = Number(bucket?.receivable || 0);
+      const payable = Number(bucket?.payable || 0);
+      const isSelected = selectedDate === dateStr;
+
+      const chips = [];
+      if (reminderCount) {
+        chips.push(`<span class="day-chip reminder">یادآور ${toPersianDigits(reminderCount)}</span>`);
+      }
+      if (receivable > 0) {
+        chips.push(`<span class="day-chip receive">دریافتی ${toPersianDigits(Math.round(receivable).toLocaleString("en-US"))}</span>`);
+      }
+      if (payable > 0) {
+        chips.push(`<span class="day-chip pay">پرداختی ${toPersianDigits(Math.round(payable).toLocaleString("en-US"))}</span>`);
+      }
+
+      cells.push(`
+        <div class="calendar-day ${inCurrentMonth ? "current" : "muted"} ${isSelected ? "selected" : ""}" data-date="${dateStr}">
+          <div class="calendar-day-head">${toPersianDigits(jd)}</div>
+          <div class="calendar-day-chips">${chips.join("")}</div>
+        </div>
+      `);
+    }
+
+    calendarGrid.innerHTML = cells.join("");
+    renderDayDetails(dayMap);
+  };
+
+  const renderRemindersTable = () => {
+    remindersRows.innerHTML = reminders
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.title}</td>
+            <td>${toPersianDigits(item.reminderDate)}</td>
+            <td>${item.isDone ? "انجام‌شده" : "باز"}</td>
+            <td>${item.description || "-"}</td>
+            <td>
+              <div class="row-actions">
+                <button class="btn-ghost" type="button" data-action="edit" data-id="${item.id}">ویرایش</button>
+                <button class="btn-secondary" type="button" data-action="toggle" data-id="${item.id}">${item.isDone ? "بازکردن" : "انجام شد"}</button>
+                <button class="btn-danger" type="button" data-action="delete" data-id="${item.id}">حذف</button>
+              </div>
+            </td>
+          </tr>
+        `
+      )
+      .join("");
+  };
+
+  const resetFormState = () => {
+    editingReminderId = null;
+    reminderForm.reset();
+    reminderDoneInput.value = "0";
+    reminderDateInput.value = selectedDate || getTodayJalaliDate();
+  };
+
+  const refresh = async () => {
+    const payload = await window.birHesab.invoke("reminders:calendar-data");
+    reminders = normalizeReminderRows(payload?.reminders || []);
+    settlements = normalizeSettlementRows(payload?.settlements || []);
+    renderCalendar();
+    renderRemindersTable();
+  };
+
+  prevMonthBtn?.addEventListener("click", () => {
+    if (viewMonth === 1) {
+      viewYear -= 1;
+      viewMonth = 12;
+    } else {
+      viewMonth -= 1;
+    }
+    renderCalendar();
+  });
+
+  nextMonthBtn?.addEventListener("click", () => {
+    if (viewMonth === 12) {
+      viewYear += 1;
+      viewMonth = 1;
+    } else {
+      viewMonth += 1;
+    }
+    renderCalendar();
+  });
+
+  calendarGrid?.addEventListener("click", (event) => {
+    const day = event.target.closest(".calendar-day");
+    if (!day) return;
+    selectedDate = day.dataset.date || selectedDate;
+    reminderDateInput.value = selectedDate;
+    renderCalendar();
+  });
+
+  remindersRows?.addEventListener("click", async (event) => {
+    const btn = event.target.closest("button[data-id]");
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    const item = reminders.find((x) => x.id === id);
+    if (!item) return;
+
+    if (btn.dataset.action === "edit") {
+      editingReminderId = id;
+      reminderTitleInput.value = item.title || "";
+      reminderDescInput.value = item.description || "";
+      reminderDateInput.value = item.reminderDate || selectedDate;
+      reminderDoneInput.value = item.isDone ? "1" : "0";
+      selectedDate = item.reminderDate || selectedDate;
+      const parsed = parseJalaliDate(selectedDate);
+      if (parsed) {
+        viewYear = parsed.jy;
+        viewMonth = parsed.jm;
+      }
+      renderCalendar();
+      return;
+    }
+
+    if (btn.dataset.action === "toggle") {
+      await window.birHesab.invoke("reminders:toggle-done", {
+        id,
+        isDone: !item.isDone
+      });
+      await refresh();
+      return;
+    }
+
+    if (btn.dataset.action === "delete") {
+      if (!confirm("این یادآور حذف شود؟")) return;
+      await window.birHesab.invoke("reminders:delete", { id });
+      if (editingReminderId === id) {
+        resetFormState();
+      }
+      await refresh();
+    }
+  });
+
+  reminderFormReset?.addEventListener("click", () => {
+    resetFormState();
+  });
+
+  reminderForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const reminderDate = toCanonicalJalaliDate(reminderDateInput.value);
+    if (!parseJalaliDate(reminderDate)) {
+      alert("تاریخ ریمایندر معتبر نیست.");
+      return;
+    }
+
+    const payload = {
+      title: reminderTitleInput.value.trim(),
+      description: reminderDescInput.value.trim(),
+      reminderDate,
+      isDone: reminderDoneInput.value === "1"
+    };
+
+    if (!payload.title) {
+      alert("عنوان ریمایندر را وارد کنید.");
+      return;
+    }
+
+    if (editingReminderId) {
+      await window.birHesab.invoke("reminders:update", {
+        id: editingReminderId,
+        ...payload
+      });
+    } else {
+      await window.birHesab.invoke("reminders:create", payload);
+    }
+
+    selectedDate = reminderDate;
+    const parsed = parseJalaliDate(reminderDate);
+    if (parsed) {
+      viewYear = parsed.jy;
+      viewMonth = parsed.jm;
+    }
+    resetFormState();
+    await refresh();
+  });
+
+  setTodayByDefault("reminderDate");
+  await refresh();
+}
+
 async function initServicesSection() {
   const form = document.getElementById("serviceForm");
   const rows = document.getElementById("servicesRows");

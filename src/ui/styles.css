@@ -596,6 +596,114 @@ th {
   background: #ef8a5b;
 }
 
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.calendar-month-title {
+  margin: 0;
+  color: var(--brand-dark);
+  font-size: 19px;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.calendar-weekdays span {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.jalali-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-day {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-height: 98px;
+  padding: 8px;
+  background: #fff;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.calendar-day:hover {
+  transform: translateY(-1px);
+}
+
+.calendar-day.muted {
+  background: #f7fbf9;
+  opacity: 0.55;
+}
+
+.calendar-day.selected {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px rgba(26, 155, 108, 0.15);
+}
+
+.calendar-day-head {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--brand-dark);
+}
+
+.calendar-day-chips {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.day-chip,
+.legend-chip {
+  display: inline-block;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.day-chip.reminder,
+.legend-chip.reminder {
+  background: #eef5ff;
+  color: #1e5da5;
+}
+
+.day-chip.receive,
+.legend-chip.receive {
+  background: #e9f9ef;
+  color: #0f7750;
+}
+
+.day-chip.pay,
+.legend-chip.pay {
+  background: #fff1ea;
+  color: #b84a2b;
+}
+
+.calendar-legend {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -619,5 +727,15 @@ th {
 
   .simple-cashbox-actions {
     grid-template-columns: 1fr;
+  }
+
+  .calendar-day {
+    min-height: 86px;
+    padding: 6px;
+  }
+
+  .day-chip {
+    font-size: 10px;
+    padding: 2px 6px;
   }
 }
