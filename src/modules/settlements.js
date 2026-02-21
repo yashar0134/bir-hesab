@@ -5,6 +5,7 @@ function registerSettlementHandlers(ipcMain, db) {
         st.id,
         st.settlement_type AS settlementType,
         st.related_id AS relatedId,
+        st.counterparty_name AS counterpartyName,
         st.project_id AS projectId,
         p.title AS projectTitle,
         st.amount,
@@ -20,8 +21,8 @@ function registerSettlementHandlers(ipcMain, db) {
 
   const createStmt = db.prepare(
     `
-      INSERT INTO settlements (settlement_type, related_id, project_id, amount, payment_method, description, settlement_date, created_at)
-      VALUES (@settlementType, @relatedId, @projectId, @amount, @paymentMethod, @description, @settlementDate, @createdAt)
+      INSERT INTO settlements (settlement_type, related_id, counterparty_name, project_id, amount, payment_method, description, settlement_date, created_at)
+      VALUES (@settlementType, @relatedId, @counterpartyName, @projectId, @amount, @paymentMethod, @description, @settlementDate, @createdAt)
     `
   );
   const updateStmt = db.prepare(
@@ -29,6 +30,7 @@ function registerSettlementHandlers(ipcMain, db) {
       UPDATE settlements
       SET settlement_type = @settlementType,
           related_id = @relatedId,
+          counterparty_name = @counterpartyName,
           project_id = @projectId,
           amount = @amount,
           payment_method = @paymentMethod,
@@ -45,6 +47,7 @@ function registerSettlementHandlers(ipcMain, db) {
     const info = createStmt.run({
       settlementType: payload.settlementType,
       relatedId: payload.relatedId ? Number(payload.relatedId) : null,
+      counterpartyName: String(payload.counterpartyName || "").trim(),
       projectId: payload.projectId ? Number(payload.projectId) : null,
       amount: Number(payload.amount || 0),
       paymentMethod: payload.paymentMethod || "cash",
@@ -60,6 +63,7 @@ function registerSettlementHandlers(ipcMain, db) {
       id: Number(payload.id),
       settlementType: payload.settlementType,
       relatedId: payload.relatedId ? Number(payload.relatedId) : null,
+      counterpartyName: String(payload.counterpartyName || "").trim(),
       projectId: payload.projectId ? Number(payload.projectId) : null,
       amount: Number(payload.amount || 0),
       paymentMethod: payload.paymentMethod || "cash",

@@ -134,6 +134,7 @@ function registerReminderHandlers(ipcMain, db) {
         st.description,
         st.settlement_date AS settlementDate,
         st.project_id AS projectId,
+        st.counterparty_name AS counterpartyName,
         p.title AS projectTitle,
         pa.full_name AS partnerName,
         st.related_id AS relatedId

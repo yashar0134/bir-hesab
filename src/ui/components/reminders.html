@@ -269,8 +269,8 @@
               <div>
                 <label for="dayCardSettlementType">نوع</label>
                 <select id="dayCardSettlementType">
-                  <option value="client">دریافتی (کارفرما)</option>
-                  <option value="partner">پرداختی (همکار)</option>
+                  <option value="client">دریافتی</option>
+                  <option value="partner">پرداختی</option>
                 </select>
               </div>
               <div>
@@ -299,10 +299,18 @@
                 </select>
               </div>
               <div>
-                <label for="dayCardSettlementPartner">همکار (برای پرداختی لازم)</label>
+                <label for="dayCardSettlementPartner">همکار (اختیاری)</label>
                 <select id="dayCardSettlementPartner">
                   <option value="">بدون همکار</option>
                 </select>
+              </div>
+              <div>
+                <label for="dayCardSettlementCounterparty">طرف حساب آزاد (اختیاری)</label>
+                <input
+                  id="dayCardSettlementCounterparty"
+                  maxlength="120"
+                  placeholder="مثل سوپرمارکت، دوست، خانواده..."
+                />
               </div>
             </div>
             <p id="dayCardSettlementPartnerHint" class="list-note"></p>

@@ -1,4 +1,4 @@
-<section class="section-card settlement-shell">
+﻿<section class="section-card settlement-shell">
   <h2 class="section-title">مدیریت تسویه و همکاران</h2>
   <p class="list-note">قابل پرداخت = شرط پروژه (درصدی/حقوقی) منهای پرداخت ثبت‌شده به همکار</p>
   <div class="settlement-tabs" role="tablist" aria-label="بخش‌های تسویه">
@@ -18,7 +18,7 @@
           <th>همکار</th>
           <th>پروژه</th>
           <th>مدل</th>
-          <th>دریافتی از کارفرما</th>
+          <th>دریافتی از پروژه</th>
           <th>قابل پرداخت</th>
           <th>پرداخت‌شده</th>
           <th>مانده</th>
@@ -149,8 +149,8 @@
       <div>
         <label for="settlementType">نوع تسویه</label>
         <select id="settlementType">
-          <option value="partner">با همکار</option>
-          <option value="client">با کارفرما</option>
+          <option value="partner">پرداختی</option>
+          <option value="client">دریافتی</option>
         </select>
       </div>
       <div id="settlementRelatedField">
@@ -158,6 +158,10 @@
         <select id="settlementRelated">
           <option value="">بدون همکار</option>
         </select>
+      </div>
+      <div>
+        <label for="settlementCounterparty">طرف حساب آزاد (اختیاری)</label>
+        <input id="settlementCounterparty" maxlength="120" placeholder="مثل سوپرمارکت، دوست، خانواده..." />
       </div>
       <div>
         <label for="settlementProject">پروژه مرتبط (اختیاری)</label>
@@ -196,11 +200,11 @@
   </form>
 
   <div class="filter-grid">
-    <input id="settlementsSearch" placeholder="جستجو در نوع/همکار/پروژه/روش/توضیح" />
+    <input id="settlementsSearch" placeholder="جستجو در نوع/طرف حساب/پروژه/روش/توضیح" />
     <select id="settlementsTypeFilter">
       <option value="">همه نوع‌ها</option>
-      <option value="partner">همکار</option>
-      <option value="client">کارفرما</option>
+      <option value="partner">پرداختی</option>
+      <option value="client">دریافتی</option>
     </select>
     <input id="settlementsFrom" data-jdp placeholder="از تاریخ" />
     <input id="settlementsTo" data-jdp placeholder="تا تاریخ" />
@@ -212,12 +216,12 @@
       <thead>
         <tr>
           <th>نوع</th>
-          <th>همکار</th>
+          <th>طرف حساب</th>
           <th>پروژه</th>
           <th>مبلغ</th>
           <th>روش</th>
           <th>تاریخ</th>
-          <th>توضیح</th>
+          <th>توضیحات</th>
           <th>عملیات</th>
         </tr>
       </thead>

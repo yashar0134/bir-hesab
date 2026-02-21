@@ -900,6 +900,9 @@ async function initRemindersSection() {
   const dayCardSettlementMethodInput = document.getElementById("dayCardSettlementMethod");
   const dayCardSettlementProjectInput = document.getElementById("dayCardSettlementProject");
   const dayCardSettlementPartnerInput = document.getElementById("dayCardSettlementPartner");
+  const dayCardSettlementCounterpartyInput = document.getElementById(
+    "dayCardSettlementCounterparty"
+  );
   const dayCardSettlementPartnerHint = document.getElementById("dayCardSettlementPartnerHint");
   const dayCardSettlementDescInput = document.getElementById("dayCardSettlementDescription");
   const dayCardSettlementReset = document.getElementById("dayCardSettlementReset");
@@ -935,19 +938,20 @@ async function initRemindersSection() {
       settlementDate: toCanonicalJalaliDate(row.settlementDate),
       amount: Number(row.amount || 0),
       projectId: row.projectId ? Number(row.projectId) : null,
-      partnerId: row.relatedId ? Number(row.relatedId) : null
+      partnerId: row.relatedId ? Number(row.relatedId) : null,
+      counterpartyName: String(row.counterpartyName || "").trim()
     }));
 
   const syncDayCardSettlementTypeState = () => {
     if (!dayCardSettlementTypeInput) return;
     const isPartnerPayment = dayCardSettlementTypeInput.value === "partner";
     if (dayCardSettlementPartnerInput) {
-      dayCardSettlementPartnerInput.required = isPartnerPayment;
+      dayCardSettlementPartnerInput.required = false;
     }
     if (dayCardSettlementPartnerHint) {
       dayCardSettlementPartnerHint.textContent = isPartnerPayment
-        ? "برای «پرداختی»، انتخاب همکار الزامی است."
-        : "برای «دریافتی»، انتخاب همکار اختیاری است.";
+        ? "برای پرداختی می‌توانید همکار را انتخاب کنید یا طرف حساب آزاد را وارد کنید."
+        : "برای دریافتی هم می‌توانید طرف حساب آزاد یا همکار انتخاب کنید.";
     }
   };
 
@@ -1367,7 +1371,8 @@ async function initRemindersSection() {
                 const typeLabel = item.settlementType === "client" ? "دریافتی" : "پرداختی";
                 const relation = [
                   item.projectTitle ? `پروژه: ${item.projectTitle}` : "",
-                  item.partnerName ? `همکار: ${item.partnerName}` : ""
+                  item.partnerName ? `همکار: ${item.partnerName}` : "",
+                  item.counterpartyName ? `طرف حساب: ${item.counterpartyName}` : ""
                 ]
                   .filter(Boolean)
                   .join(" | ");
@@ -1597,6 +1602,7 @@ async function initRemindersSection() {
     if (dayCardSettlementMethodInput) dayCardSettlementMethodInput.value = "cash";
     if (dayCardSettlementProjectInput) dayCardSettlementProjectInput.value = "";
     if (dayCardSettlementPartnerInput) dayCardSettlementPartnerInput.value = "";
+    if (dayCardSettlementCounterpartyInput) dayCardSettlementCounterpartyInput.value = "";
     syncDayCardSettlementTypeState();
   };
 
@@ -1816,14 +1822,11 @@ async function initRemindersSection() {
 
     const relatedId =
       settlementType === "partner" ? dayCardSettlementPartnerInput?.value || null : null;
-    if (settlementType === "partner" && !relatedId) {
-      alert("برای پرداختی، همکار را انتخاب کنید.");
-      return;
-    }
 
     await window.birHesab.invoke("settlements:create", {
       settlementType,
       relatedId,
+      counterpartyName: String(dayCardSettlementCounterpartyInput?.value || "").trim(),
       projectId: dayCardSettlementProjectInput?.value || null,
       amount,
       paymentMethod: dayCardSettlementMethodInput?.value || "cash",
@@ -2182,6 +2185,7 @@ async function initSettlementsSection() {
   const termProject = document.getElementById("termProject");
   const settlementTypeInput = document.getElementById("settlementType");
   const settlementRelatedInput = document.getElementById("settlementRelated");
+  const settlementCounterpartyInput = document.getElementById("settlementCounterparty");
   const settlementProjectInput = document.getElementById("settlementProject");
   const settlementRelatedField = document.getElementById("settlementRelatedField");
   const settlementFormHint = document.getElementById("settlementFormHint");
@@ -2237,10 +2241,16 @@ async function initSettlementsSection() {
     return formatCurrency(item.salaryAmount);
   };
 
-  const settlementTypeLabel = (type) => (type === "client" ? "کارفرما" : "همکار");
+  const settlementTypeLabel = (type) => (type === "client" ? "دریافتی" : "پرداختی");
 
   const settlementMethodLabel = (method) =>
     labelFromMap(settlementMethodLabels, method, method || "-");
+
+  const settlementCounterpartyLabel = (item, relatedName = "") => {
+    if (relatedName) return relatedName;
+    if (item.counterpartyName) return item.counterpartyName;
+    return "-";
+  };
 
   const populateSimpleSelect = (
     selectEl,
@@ -2275,8 +2285,8 @@ async function initSettlementsSection() {
     }
     if (settlementFormHint) {
       settlementFormHint.textContent = isPartner
-        ? "برای تسویه همکار، همکار و پروژه مرتبط را انتخاب کنید."
-        : "برای ثبت دریافتی کارفرما، پروژه مرتبط را انتخاب کنید (در صورت نیاز).";
+        ? "برای پرداختی، در صورت نیاز همکار یا طرف حساب آزاد را وارد کنید."
+        : "برای دریافتی، می‌توانید طرف حساب آزاد یا پروژه مرتبط ثبت کنید.";
     }
   };
 
@@ -2299,6 +2309,7 @@ async function initSettlementsSection() {
             settlementTypeLabel(item.settlementType),
             settlementMethodLabel(item.paymentMethod),
             item.description,
+            item.counterpartyName,
             relatedName,
             projectName
           ) &&
@@ -2362,11 +2373,12 @@ async function initSettlementsSection() {
     settlementRows.innerHTML = filteredSettlements()
       .map((item) => {
         const relatedName = partnerNameMap.get(Number(item.relatedId || 0)) || "-";
+        const counterparty = settlementCounterpartyLabel(item, relatedName === "-" ? "" : relatedName);
         const projectName =
           item.projectTitle || projectTitleMap.get(Number(item.projectId || 0)) || "-";
         return `<tr>
           <td>${settlementTypeLabel(item.settlementType)}</td>
-          <td>${item.settlementType === "partner" ? relatedName : "-"}</td>
+          <td>${counterparty}</td>
           <td>${projectName}</td>
           <td>${formatCurrency(item.amount)}</td>
           <td>${settlementMethodLabel(item.paymentMethod)}</td>
@@ -2477,6 +2489,9 @@ async function initSettlementsSection() {
       settlementTypeInput.value = item.settlementType;
       syncSettlementTypeUi();
       settlementRelatedInput.value = item.relatedId || "";
+      if (settlementCounterpartyInput) {
+        settlementCounterpartyInput.value = item.counterpartyName || "";
+      }
       settlementProjectInput.value = item.projectId || "";
       document.getElementById("settlementAmount").value = formatMoneyInput(item.amount);
       document.getElementById("settlementMethod").value = item.paymentMethod || "cash";
@@ -2563,6 +2578,7 @@ async function initSettlementsSection() {
     const payload = {
       settlementType: settlementTypeInput.value,
       relatedId: settlementRelatedInput.value || null,
+      counterpartyName: String(settlementCounterpartyInput?.value || "").trim(),
       projectId: settlementProjectInput.value || null,
       amount: parseMoneyInput(document.getElementById("settlementAmount").value),
       paymentMethod: document.getElementById("settlementMethod").value,
