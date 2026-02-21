@@ -948,10 +948,41 @@ tbody tr:hover {
   box-shadow: 0 0 0 2px rgba(26, 155, 108, 0.15);
 }
 
+.calendar-day.friday {
+  border-color: #d7defc;
+  background: linear-gradient(180deg, #fcfdff, #f7f9ff);
+}
+
+.calendar-day.official-holiday {
+  border-color: #f1caca;
+  background: linear-gradient(180deg, #fffdfc, #fff3f1);
+}
+
 .calendar-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 13px;
   font-weight: 800;
   color: var(--brand-dark);
+}
+
+.calendar-day-mark {
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.calendar-day-mark.friday {
+  background: #edf2ff;
+  color: #3a53a3;
+}
+
+.calendar-day-mark.holiday {
+  background: #ffeceb;
+  color: #ad3e40;
 }
 
 .calendar-day-chips {
@@ -986,6 +1017,24 @@ tbody tr:hover {
 .legend-chip.pay {
   background: #fff1ea;
   color: #b84a2b;
+}
+
+.day-chip.friday,
+.legend-chip.friday {
+  background: #eef2ff;
+  color: #3a53a3;
+}
+
+.day-chip.holiday,
+.legend-chip.holiday {
+  background: #ffeceb;
+  color: #ad3e40;
+}
+
+.day-chip.event,
+.legend-chip.event {
+  background: #eef9ff;
+  color: #226987;
 }
 
 .calendar-legend {
@@ -1085,6 +1134,141 @@ tbody tr:hover {
   gap: 6px;
 }
 
+.inline-sep {
+  color: var(--muted);
+  margin: 0 4px;
+}
+
+.day-card-modal {
+  width: min(1320px, 98vw);
+}
+
+.day-card-body {
+  display: grid;
+  gap: 12px;
+}
+
+.day-card-summary {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fbfffd;
+  display: grid;
+  gap: 8px;
+}
+
+.day-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.day-card-totals {
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+
+.day-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.day-badge.friday {
+  background: #eef2ff;
+  color: #3a53a3;
+}
+
+.day-badge.holiday {
+  background: #ffeceb;
+  color: #ad3e40;
+}
+
+.day-badge.event {
+  background: #eef9ff;
+  color: #226987;
+}
+
+.day-badge.religious {
+  background: #f2edff;
+  color: #5a428f;
+}
+
+.day-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.day-card-section {
+  margin: 0;
+}
+
+.day-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.day-card-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: #fdfffe;
+  display: grid;
+  gap: 6px;
+}
+
+.day-card-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-card-item-title {
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+
+.day-card-item-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.day-card-item-note {
+  font-size: 12px;
+  color: #31594a;
+}
+
+.day-card-subtle {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.day-card-form {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fbfffd;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.day-card-form:last-child {
+  margin-bottom: 0;
+}
+
+.day-card-form h5 {
+  margin: 0;
+  color: var(--brand-dark);
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1179,6 +1363,10 @@ tbody tr:hover {
   }
 
   .reminder-alert-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .day-card-grid {
     grid-template-columns: 1fr;
   }
 }

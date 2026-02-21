@@ -1,6 +1,9 @@
-<section class="section-card">
+﻿<section class="section-card">
   <h2 class="section-title">تقویم شمسی و ریمایندرها</h2>
-  <p class="list-note">برنامه روزانه را ببینید، فیلتر کنید و یادآورهای مرتبط با پروژه و همکار را سریع مدیریت کنید.</p>
+  <p class="list-note">
+    برنامه روزانه را ببینید، فیلتر کنید و یادآورها، دریافتی‌ها و پرداختی‌های مرتبط با پروژه و همکار را سریع
+    مدیریت کنید.
+  </p>
 
   <div id="reminderInAppNotice" class="reminder-notice hidden"></div>
 
@@ -52,9 +55,14 @@
     <span class="legend-chip reminder">یادآور</span>
     <span class="legend-chip receive">دریافتی</span>
     <span class="legend-chip pay">پرداختی</span>
+    <span class="legend-chip friday">جمعه</span>
+    <span class="legend-chip holiday">تعطیل رسمی</span>
+    <span class="legend-chip event">رویداد</span>
   </div>
 
-  <p id="calendarDayDetails" class="list-note calendar-day-details">برای مشاهده جزئیات، یک روز را انتخاب کنید.</p>
+  <p id="calendarDayDetails" class="list-note calendar-day-details">
+    برای مشاهده جزئیات، یک روز را انتخاب کنید.
+  </p>
 
   <div class="calendar-action-row">
     <button id="calendarQuickAddBtn" class="btn-secondary" type="button">ثبت ریمایندر برای روز انتخاب‌شده</button>
@@ -174,4 +182,141 @@
       </table>
     </div>
   </section>
+</div>
+
+<div id="calendarDayModal" class="modal hidden">
+  <div class="modal-card modal-lg day-card-modal">
+    <div class="modal-header">
+      <div>
+        <h3 id="dayCardDateLabel">روز انتخاب‌شده</h3>
+        <p id="dayCardDateMeta" class="list-note"></p>
+      </div>
+      <button type="button" id="calendarDayModalClose" class="btn-danger">بستن</button>
+    </div>
+    <div class="modal-body day-card-body">
+      <div class="day-card-summary">
+        <div id="dayCardStatusTags" class="day-card-tags"></div>
+        <div id="dayCardTotals" class="day-card-totals"></div>
+      </div>
+
+      <div class="day-card-grid">
+        <section class="section-card day-card-section">
+          <h4 class="section-title">رویدادهای ایرانی/جهانی</h4>
+          <div id="dayCardEventsList"></div>
+        </section>
+
+        <section class="section-card day-card-section">
+          <h4 class="section-title">یادآورهای همین روز</h4>
+          <div id="dayCardRemindersList"></div>
+        </section>
+      </div>
+
+      <div class="day-card-grid">
+        <section class="section-card day-card-section">
+          <h4 class="section-title">دریافتی‌ها / پرداختی‌های همین روز</h4>
+          <div id="dayCardSettlementsList"></div>
+        </section>
+
+        <section class="section-card day-card-section">
+          <h4 class="section-title">اقدام سریع از همین روز</h4>
+
+          <form id="dayCardReminderForm" class="day-card-form">
+            <h5>ثبت ریمایندر</h5>
+            <div class="grid-3">
+              <div>
+                <label for="dayCardReminderTitle">عنوان</label>
+                <input id="dayCardReminderTitle" maxlength="120" required />
+              </div>
+              <div>
+                <label for="dayCardReminderTime">ساعت</label>
+                <input id="dayCardReminderTime" type="time" value="09:00" required />
+              </div>
+              <div>
+                <label for="dayCardReminderRepeatType">تکرار</label>
+                <select id="dayCardReminderRepeatType">
+                  <option value="none">بدون تکرار</option>
+                  <option value="daily">روزانه</option>
+                  <option value="weekly">هفتگی</option>
+                  <option value="monthly">ماهانه</option>
+                </select>
+              </div>
+              <div>
+                <label for="dayCardReminderProject">پروژه (اختیاری)</label>
+                <select id="dayCardReminderProject">
+                  <option value="">بدون پروژه</option>
+                </select>
+              </div>
+              <div>
+                <label for="dayCardReminderPartner">همکار (اختیاری)</label>
+                <select id="dayCardReminderPartner">
+                  <option value="">بدون همکار</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label for="dayCardReminderDescription">توضیحات</label>
+              <textarea id="dayCardReminderDescription"></textarea>
+            </div>
+            <div class="form-actions">
+              <button class="btn-primary" type="submit">ثبت ریمایندر</button>
+              <button id="dayCardReminderReset" class="btn-secondary" type="button">پاکسازی</button>
+            </div>
+          </form>
+
+          <form id="dayCardSettlementForm" class="day-card-form">
+            <h5>ثبت دریافتی / پرداختی</h5>
+            <div class="grid-3">
+              <div>
+                <label for="dayCardSettlementType">نوع</label>
+                <select id="dayCardSettlementType">
+                  <option value="client">دریافتی (کارفرما)</option>
+                  <option value="partner">پرداختی (همکار)</option>
+                </select>
+              </div>
+              <div>
+                <label for="dayCardSettlementAmount">مبلغ (تومان)</label>
+                <input
+                  id="dayCardSettlementAmount"
+                  type="text"
+                  class="money-input"
+                  inputmode="numeric"
+                  placeholder="100,000"
+                  required
+                />
+              </div>
+              <div>
+                <label for="dayCardSettlementMethod">روش پرداخت</label>
+                <select id="dayCardSettlementMethod">
+                  <option value="cash">نقدی</option>
+                  <option value="card">کارت</option>
+                  <option value="bank">بانک</option>
+                </select>
+              </div>
+              <div>
+                <label for="dayCardSettlementProject">پروژه (اختیاری)</label>
+                <select id="dayCardSettlementProject">
+                  <option value="">بدون پروژه</option>
+                </select>
+              </div>
+              <div>
+                <label for="dayCardSettlementPartner">همکار (برای پرداختی لازم)</label>
+                <select id="dayCardSettlementPartner">
+                  <option value="">بدون همکار</option>
+                </select>
+              </div>
+            </div>
+            <p id="dayCardSettlementPartnerHint" class="list-note"></p>
+            <div>
+              <label for="dayCardSettlementDescription">توضیحات</label>
+              <textarea id="dayCardSettlementDescription"></textarea>
+            </div>
+            <div class="form-actions">
+              <button class="btn-primary" type="submit">ثبت تسویه</button>
+              <button id="dayCardSettlementReset" class="btn-secondary" type="button">پاکسازی</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </div>
+  </div>
 </div>

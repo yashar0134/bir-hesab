@@ -29,6 +29,7 @@ const invokeChannels = new Set([
   "reminders:clear-snooze",
   "reminders:delete",
   "reminders:calendar-data",
+  "calendar:events:dataset",
   "expenses:list",
   "expenses:create",
   "expenses:update",

@@ -14,6 +14,7 @@ const { registerUpdaterHandlers } = require("./modules/updater.js");
 
 let mainWindow;
 let db;
+let calendarEventsDatasetCache = null;
 
 const AUTO_BACKUP_SETTINGS_FILE = "auto-backup-settings.json";
 const DEFAULT_AUTO_BACKUP_SETTINGS = Object.freeze({
@@ -348,6 +349,37 @@ function registerDataHandlers() {
     app.exit(0);
     return { canceled: false, restarting: true };
   });
+}
+
+function getCalendarEventsDataset() {
+  if (calendarEventsDatasetCache) {
+    return calendarEventsDatasetCache;
+  }
+
+  const candidatePaths = [
+    path.join(app.getAppPath(), "src", "data", "calendar-events-1404-1405.json"),
+    path.join(__dirname, "data", "calendar-events-1404-1405.json")
+  ];
+
+  for (const filePath of candidatePaths) {
+    try {
+      if (!fs.existsSync(filePath)) continue;
+      const raw = fs.readFileSync(filePath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") continue;
+      calendarEventsDatasetCache = parsed;
+      return calendarEventsDatasetCache;
+    } catch {
+      // Continue to next candidate path.
+    }
+  }
+
+  calendarEventsDatasetCache = { days: {} };
+  return calendarEventsDatasetCache;
+}
+
+function registerCalendarEventHandlers() {
+  ipcMain.handle("calendar:events:dataset", () => getCalendarEventsDataset());
 }
 
 function registerNotificationHandlers() {
@@ -855,6 +887,7 @@ app
     registerCashboxHandlers(ipcMain, db);
     registerReportHandlers();
     registerDataHandlers();
+    registerCalendarEventHandlers();
     registerNotificationHandlers();
 
     createWindow();
