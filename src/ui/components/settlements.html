@@ -1,24 +1,36 @@
-﻿<section class="section-card">
-  <h2 class="section-title">داشبورد تسویه همکاران (خودکار)</h2>
+<section class="section-card settlement-shell">
+  <h2 class="section-title">مدیریت تسویه و همکاران</h2>
   <p class="list-note">قابل پرداخت = شرط پروژه (درصدی/حقوقی) منهای پرداخت ثبت‌شده به همکار</p>
-  <table>
-    <thead>
-      <tr>
-        <th>همکار</th>
-        <th>پروژه</th>
-        <th>مدل</th>
-        <th>دریافتی از کارفرما</th>
-        <th>قابل پرداخت</th>
-        <th>پرداخت‌شده</th>
-        <th>مانده</th>
-      </tr>
-    </thead>
-    <tbody id="partnerPayablesRows"></tbody>
-  </table>
+  <div class="settlement-tabs" role="tablist" aria-label="بخش‌های تسویه">
+    <button type="button" class="settlement-tab-btn active" data-settlement-tab="summary" aria-selected="true">داشبورد مانده</button>
+    <button type="button" class="settlement-tab-btn" data-settlement-tab="partners" aria-selected="false">همکاران</button>
+    <button type="button" class="settlement-tab-btn" data-settlement-tab="terms" aria-selected="false">شرایط پرداخت</button>
+    <button type="button" class="settlement-tab-btn" data-settlement-tab="settlements" aria-selected="false">تسویه‌ها</button>
+  </div>
 </section>
 
-<section class="section-card">
-  <h2 class="section-title">همکاران (Partners)</h2>
+<section class="section-card settlement-pane" data-settlement-pane="summary">
+  <h3 class="section-title">داشبورد تسویه همکاران (خودکار)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>همکار</th>
+          <th>پروژه</th>
+          <th>مدل</th>
+          <th>دریافتی از کارفرما</th>
+          <th>قابل پرداخت</th>
+          <th>پرداخت‌شده</th>
+          <th>مانده</th>
+        </tr>
+      </thead>
+      <tbody id="partnerPayablesRows"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section-card settlement-pane hidden" data-settlement-pane="partners">
+  <h3 class="section-title">همکاران (Partners)</h3>
   <form id="partnerForm">
     <div class="grid-3">
       <div>
@@ -57,27 +69,31 @@
       <button class="btn-primary" type="submit">ثبت همکار</button>
     </div>
   </form>
+
   <div class="filter-grid">
     <input id="partnersSearch" placeholder="جستجو در نام/نقش/مدل" />
     <input id="partnersFrom" data-jdp placeholder="از تاریخ" />
     <input id="partnersTo" data-jdp placeholder="تا تاریخ" />
     <button id="partnersFilterReset" type="button" class="btn-secondary">پاکسازی</button>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>نام</th>
-        <th>مدل پرداخت</th>
-        <th>درصد/حقوق</th>
-        <th>عملیات</th>
-      </tr>
-    </thead>
-    <tbody id="partnersRows"></tbody>
-  </table>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>نام</th>
+          <th>مدل پرداخت</th>
+          <th>درصد/حقوق</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="partnersRows"></tbody>
+    </table>
+  </div>
 </section>
 
-<section class="section-card">
-  <h2 class="section-title">شرایط پرداخت همکار در هر پروژه</h2>
+<section class="section-card settlement-pane hidden" data-settlement-pane="terms">
+  <h3 class="section-title">شرایط پرداخت همکار در هر پروژه</h3>
   <form id="partnerTermForm">
     <div class="grid-3">
       <div>
@@ -109,22 +125,25 @@
       <button class="btn-primary" type="submit">ذخیره شرط پروژه</button>
     </div>
   </form>
-  <table>
-    <thead>
-      <tr>
-        <th>همکار</th>
-        <th>پروژه</th>
-        <th>مدل</th>
-        <th>مقدار</th>
-        <th>عملیات</th>
-      </tr>
-    </thead>
-    <tbody id="partnerTermsRows"></tbody>
-  </table>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>همکار</th>
+          <th>پروژه</th>
+          <th>مدل</th>
+          <th>مقدار</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="partnerTermsRows"></tbody>
+    </table>
+  </div>
 </section>
 
-<section class="section-card">
-  <h2 class="section-title">تسویه‌ها</h2>
+<section class="section-card settlement-pane hidden" data-settlement-pane="settlements">
+  <h3 class="section-title">تسویه‌ها</h3>
   <form id="settlementForm">
     <div class="grid-3">
       <div>
@@ -134,13 +153,17 @@
           <option value="client">با کارفرما</option>
         </select>
       </div>
-      <div>
-        <label for="settlementRelated">شناسه مرتبط (اختیاری)</label>
-        <input id="settlementRelated" type="number" min="1" />
+      <div id="settlementRelatedField">
+        <label for="settlementRelated">همکار مرتبط (اختیاری)</label>
+        <select id="settlementRelated">
+          <option value="">بدون همکار</option>
+        </select>
       </div>
       <div>
-        <label for="settlementProject">شناسه پروژه (اختیاری)</label>
-        <input id="settlementProject" type="number" min="1" />
+        <label for="settlementProject">پروژه مرتبط (اختیاری)</label>
+        <select id="settlementProject">
+          <option value="">بدون پروژه</option>
+        </select>
       </div>
       <div>
         <label for="settlementAmount">مبلغ (تومان)</label>
@@ -159,16 +182,21 @@
         <input id="settlementDate" type="text" data-jdp inputmode="numeric" autocomplete="off" placeholder="1404/01/01" required />
       </div>
     </div>
+
+    <p id="settlementFormHint" class="list-note"></p>
+
     <div>
       <label for="settlementDesc">توضیحات</label>
       <textarea id="settlementDesc"></textarea>
     </div>
+
     <div class="form-actions">
       <button class="btn-primary" type="submit">ثبت تسویه</button>
     </div>
   </form>
+
   <div class="filter-grid">
-    <input id="settlementsSearch" placeholder="جستجو در نوع/روش/توضیح" />
+    <input id="settlementsSearch" placeholder="جستجو در نوع/همکار/پروژه/روش/توضیح" />
     <select id="settlementsTypeFilter">
       <option value="">همه نوع‌ها</option>
       <option value="partner">همکار</option>
@@ -178,17 +206,22 @@
     <input id="settlementsTo" data-jdp placeholder="تا تاریخ" />
     <button id="settlementsFilterReset" type="button" class="btn-secondary">پاکسازی</button>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>نوع</th>
-        <th>مبلغ</th>
-        <th>روش</th>
-        <th>تاریخ</th>
-        <th>توضیح</th>
-        <th>عملیات</th>
-      </tr>
-    </thead>
-    <tbody id="settlementsRows"></tbody>
-  </table>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>نوع</th>
+          <th>همکار</th>
+          <th>پروژه</th>
+          <th>مبلغ</th>
+          <th>روش</th>
+          <th>تاریخ</th>
+          <th>توضیح</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="settlementsRows"></tbody>
+    </table>
+  </div>
 </section>

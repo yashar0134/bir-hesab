@@ -1,5 +1,6 @@
-﻿<section class="section-card">
+<section class="section-card">
   <h2 class="section-title">مدیریت خدمات</h2>
+  <p class="list-note">خدمات پایه کسب‌وکار را ثبت کنید تا در پروژه‌ها و گزارش‌ها استفاده شوند.</p>
   <form id="serviceForm">
     <div class="grid-3">
       <div>
@@ -40,16 +41,19 @@
     <input id="servicesTo" data-jdp placeholder="تا تاریخ" />
     <button id="servicesFilterReset" type="button" class="btn-secondary">پاکسازی</button>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>نام</th>
-        <th>مدل</th>
-        <th>نرخ</th>
-        <th>توضیح</th>
-        <th>عملیات</th>
-      </tr>
-    </thead>
-    <tbody id="servicesRows"></tbody>
-  </table>
+  <p id="servicesListMeta" class="list-note"></p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>نام</th>
+          <th>مدل</th>
+          <th>نرخ</th>
+          <th>توضیح</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="servicesRows"></tbody>
+    </table>
+  </div>
 </section>

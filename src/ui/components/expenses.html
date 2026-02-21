@@ -1,20 +1,21 @@
 <section class="section-card">
   <h2 class="section-title">ثبت هزینه</h2>
+  <p class="list-note">هزینه‌های کسب‌وکار و مشترک را با جزئیات ثبت کنید تا گزارش مالی دقیق بماند.</p>
   <form id="expenseForm">
     <div class="grid-3">
       <div>
         <label for="expenseScope">دامنه هزینه</label>
         <select id="expenseScope">
-          <option value="business">کسب و کار</option>
+          <option value="business">کسب‌وکار</option>
           <option value="shared">مشترک</option>
         </select>
       </div>
       <div>
-        <label for="expensePaidBy">پرداخت کننده</label>
+        <label for="expensePaidBy">پرداخت‌کننده</label>
         <input id="expensePaidBy" placeholder="شرکت / همکار" />
       </div>
       <div>
-        <label for="expenseCategory">دسته بندی</label>
+        <label for="expenseCategory">دسته‌بندی</label>
         <input id="expenseCategory" required />
       </div>
       <div>
@@ -52,29 +53,32 @@
 </section>
 
 <section class="section-card">
-  <h3 class="section-title">لیست هزینه ها</h3>
+  <h3 class="section-title">لیست هزینه‌ها</h3>
   <div class="filter-grid">
     <input id="expensesSearch" placeholder="جستجو در دامنه/دسته/توضیح" />
     <select id="expensesScopeFilter">
-      <option value="">همه دامنه ها</option>
-      <option value="business">کسب و کار</option>
+      <option value="">همه دامنه‌ها</option>
+      <option value="business">کسب‌وکار</option>
       <option value="shared">مشترک</option>
     </select>
     <input id="expensesFrom" data-jdp placeholder="از تاریخ" />
     <input id="expensesTo" data-jdp placeholder="تا تاریخ" />
     <button id="expensesFilterReset" type="button" class="btn-secondary">پاکسازی</button>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>دامنه</th>
-        <th>دسته بندی</th>
-        <th>مبلغ</th>
-        <th>تاریخ</th>
-        <th>توضیح</th>
-        <th>عملیات</th>
-      </tr>
-    </thead>
-    <tbody id="expensesRows"></tbody>
-  </table>
+  <p id="expensesListMeta" class="list-note"></p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>دامنه</th>
+          <th>دسته‌بندی</th>
+          <th>مبلغ</th>
+          <th>تاریخ</th>
+          <th>توضیح</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="expensesRows"></tbody>
+    </table>
+  </div>
 </section>

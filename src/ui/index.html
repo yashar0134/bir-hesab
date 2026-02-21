@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
@@ -21,13 +21,20 @@
             <p>نرم‌افزار حسابداری بیرینو برای ویندوز</p>
           </div>
           <div class="mode-tabs" id="modeTabs">
-            <span id="updateStatus" class="update-pill update-info">آپدیت: آماده بررسی</span>
-            <button type="button" class="btn-secondary" id="checkUpdateBtn">بررسی آپدیت</button>
-            <button type="button" class="btn-primary hidden" id="updateActionBtn">دانلود آپدیت</button>
-            <button type="button" class="btn-secondary" id="createBackupBtn">پشتیبان‌گیری</button>
-            <button type="button" class="btn-secondary" id="restoreBackupBtn">بازیابی پشتیبان</button>
-            <button type="button" class="btn-secondary" id="backupSettingsBtn">تنظیم بکاپ خودکار</button>
-            <button type="button" class="btn-secondary" id="openHelpBtn">آموزش</button>
+            <div class="update-tools">
+              <span id="updateStatus" class="update-pill update-info">آپدیت: آماده بررسی</span>
+              <button type="button" class="btn-secondary" id="checkUpdateBtn">بررسی آپدیت</button>
+              <button type="button" class="btn-primary hidden" id="updateActionBtn">دانلود آپدیت</button>
+            </div>
+            <details class="tools-dropdown">
+              <summary>ابزارها</summary>
+              <div class="tools-dropdown-menu">
+                <button type="button" class="btn-secondary" id="createBackupBtn">پشتیبان‌گیری</button>
+                <button type="button" class="btn-secondary" id="restoreBackupBtn">بازیابی پشتیبان</button>
+                <button type="button" class="btn-secondary" id="backupSettingsBtn">تنظیم بکاپ خودکار</button>
+                <button type="button" class="btn-secondary" id="openHelpBtn">آموزش</button>
+              </div>
+            </details>
           </div>
         </header>
         <section id="globalReminderBanner" class="global-reminder-banner hidden"></section>
@@ -97,6 +104,18 @@
             <button type="button" id="runAutoBackupNowBtn" class="btn-secondary">اجرای بکاپ خودکار الان</button>
             <button type="button" id="saveAutoBackupSettingsBtn" class="btn-primary">ذخیره تنظیمات</button>
           </div>
+        </div>
+      </div>
+    </div>
+    <div id="reminderAlertModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>یادآورهای فعال</h3>
+          <button type="button" id="closeReminderAlertBtn" class="btn-danger">بستن</button>
+        </div>
+        <div class="modal-body">
+          <p id="reminderAlertSummary" class="list-note"></p>
+          <div id="reminderAlertList" class="reminder-alert-list"></div>
         </div>
       </div>
     </div>

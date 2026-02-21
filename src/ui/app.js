@@ -6,6 +6,9 @@ const state = {
 };
 
 let reminderNotificationsTimer = null;
+let reminderAlertModalBound = false;
+let reminderAlertItems = [];
+let reminderAlertLastDueTodayCount = 0;
 
 const sectionMap = {
   "dashboard-birino": "components/dashboard-birino.html",
@@ -43,6 +46,37 @@ const quickGuideMap = {
   expenses: ["۱️⃣ انتخاب دامنه", "۲️⃣ ثبت مبلغ", "۳️⃣ ثبت تاریخ", "✅ ذخیره"],
   cashbox: ["۱️⃣ ثبت مبلغ", "۲️⃣ ثبت تاریخ", "۳️⃣ ثبت توضیح", "✅ دکمه دخل یا خرج"]
 };
+
+const pricingModelLabels = Object.freeze({
+  hourly: "ساعتی",
+  daily: "روزانه",
+  weekly: "هفتگی",
+  monthly: "ماهانه",
+  project: "پروژه‌ای",
+  "per-minute": "دقیقه‌ای"
+});
+
+const projectStatusLabels = Object.freeze({
+  open: "باز",
+  "in-progress": "درحال انجام",
+  done: "تکمیل شده",
+  cancelled: "لغو شده"
+});
+
+const expenseScopeLabels = Object.freeze({
+  business: "کسب‌وکار",
+  shared: "مشترک"
+});
+
+function labelFromMap(mapObj, value, fallback = "-") {
+  const key = String(value || "");
+  return mapObj[key] || key || fallback;
+}
+
+function scrollToFormTop(formElement) {
+  if (!formElement?.scrollIntoView) return;
+  formElement.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 function resolveActiveSection(section) {
   if (SIMPLE_UI_ENABLED) return SIMPLE_SECTION;
@@ -730,6 +764,12 @@ async function initRemindersSection() {
   const filterProject = document.getElementById("calendarFilterProject");
   const filterPartner = document.getElementById("calendarFilterPartner");
   const filterReminderStatus = document.getElementById("calendarFilterReminderStatus");
+  const calendarQuickAddBtn = document.getElementById("calendarQuickAddBtn");
+  const calendarGoTodayBtn = document.getElementById("calendarGoTodayBtn");
+  const calendarClearFiltersBtn = document.getElementById("calendarClearFiltersBtn");
+  const remindersListSearch = document.getElementById("remindersListSearch");
+  const remindersListStatus = document.getElementById("remindersListStatus");
+  const remindersListReset = document.getElementById("remindersListReset");
 
   const today = parseJalaliDate(getTodayJalaliDate()) || { jy: 1404, jm: 1, jd: 1 };
   let viewYear = today.jy;
@@ -1007,8 +1047,28 @@ async function initRemindersSection() {
     renderDayDetails(dayMap);
   };
 
+  const getTableFilteredReminders = () => {
+    const status = remindersListStatus?.value || "all";
+    return reminders.filter((item) => {
+      if (
+        !textMatch(
+          remindersListSearch?.value || "",
+          item.title,
+          item.description,
+          item.projectTitle,
+          item.partnerName
+        )
+      ) {
+        return false;
+      }
+      if (status === "open" && item.isDone) return false;
+      if (status === "done" && !item.isDone) return false;
+      return true;
+    });
+  };
+
   const renderRemindersTable = () => {
-    remindersRows.innerHTML = reminders
+    remindersRows.innerHTML = getTableFilteredReminders()
       .map(
         (item) => `
           <tr>
@@ -1101,6 +1161,40 @@ async function initRemindersSection() {
   [filterShowReminders, filterShowReceivables, filterShowPayables, filterProject, filterPartner, filterReminderStatus].forEach(
     (el) => el?.addEventListener("input", renderCalendar)
   );
+
+  [remindersListSearch, remindersListStatus].forEach((el) =>
+    el?.addEventListener("input", renderRemindersTable)
+  );
+  remindersListReset?.addEventListener("click", () => {
+    if (remindersListSearch) remindersListSearch.value = "";
+    if (remindersListStatus) remindersListStatus.value = "all";
+    renderRemindersTable();
+  });
+
+  calendarQuickAddBtn?.addEventListener("click", () => {
+    reminderDateInput.value = selectedDate || getTodayJalaliDate();
+    reminderTitleInput.focus();
+  });
+
+  calendarGoTodayBtn?.addEventListener("click", () => {
+    const parsedToday = parseJalaliDate(getTodayJalaliDate());
+    if (!parsedToday) return;
+    viewYear = parsedToday.jy;
+    viewMonth = parsedToday.jm;
+    selectedDate = formatJalaliDateParts(parsedToday.jy, parsedToday.jm, parsedToday.jd);
+    reminderDateInput.value = selectedDate;
+    renderCalendar();
+  });
+
+  calendarClearFiltersBtn?.addEventListener("click", () => {
+    if (filterShowReminders) filterShowReminders.checked = true;
+    if (filterShowReceivables) filterShowReceivables.checked = true;
+    if (filterShowPayables) filterShowPayables.checked = true;
+    if (filterProject) filterProject.value = "";
+    if (filterPartner) filterPartner.value = "";
+    if (filterReminderStatus) filterReminderStatus.value = "all";
+    renderCalendar();
+  });
 
   calendarGrid?.addEventListener("click", (event) => {
     const day = event.target.closest(".calendar-day");
@@ -1249,6 +1343,7 @@ async function initRemindersSection() {
 async function initServicesSection() {
   const form = document.getElementById("serviceForm");
   const rows = document.getElementById("servicesRows");
+  const listMeta = document.getElementById("servicesListMeta");
   const search = document.getElementById("servicesSearch");
   const from = document.getElementById("servicesFrom");
   const to = document.getElementById("servicesTo");
@@ -1263,9 +1358,24 @@ async function initServicesSection() {
     );
 
   const render = () => {
-    rows.innerHTML = filtered()
-      .map((service) => `<tr><td><span class="status-dot"></span>${service.name}</td><td>${service.pricingModel}</td><td>${formatCurrency(service.rate)}</td><td>${service.description || "-"}</td><td>${actionButtons(service.id, "service")}</td></tr>`)
+    const visible = filtered();
+    rows.innerHTML = visible
+      .map(
+        (service) =>
+          `<tr><td><span class="status-dot"></span>${service.name}</td><td>${labelFromMap(
+            pricingModelLabels,
+            service.pricingModel
+          )}</td><td>${formatCurrency(service.rate)}</td><td>${service.description || "-"}</td><td>${actionButtons(
+            service.id,
+            "service"
+          )}</td></tr>`
+      )
       .join("");
+    if (listMeta) {
+      listMeta.textContent = `نمایش ${toPersianDigits(visible.length)} مورد از ${toPersianDigits(
+        all.length
+      )} خدمت`;
+    }
   };
 
   const refresh = async () => {
@@ -1286,6 +1396,8 @@ async function initServicesSection() {
       document.getElementById("pricingModel").value = item.pricingModel;
       document.getElementById("serviceRate").value = formatMoneyInput(item.rate);
       document.getElementById("serviceDesc").value = item.description || "";
+      scrollToFormTop(form);
+      document.getElementById("serviceName").focus();
       return;
     }
 
@@ -1330,6 +1442,7 @@ async function initServicesSection() {
 async function initProjectsSection() {
   const form = document.getElementById("projectForm");
   const rows = document.getElementById("projectsRows");
+  const listMeta = document.getElementById("projectsListMeta");
   const search = document.getElementById("projectsSearch");
   const statusFilter = document.getElementById("projectsStatusFilter");
   const from = document.getElementById("projectsFrom");
@@ -1369,18 +1482,36 @@ async function initProjectsSection() {
   const filtered = () =>
     all.filter(
       (item) =>
-        textMatch(search.value, item.title, item.clientName, item.status, item.serviceNames) &&
+        textMatch(
+          search.value,
+          item.title,
+          item.clientName,
+          item.status,
+          labelFromMap(projectStatusLabels, item.status),
+          item.serviceNames
+        ) &&
         (!statusFilter.value || item.status === statusFilter.value) &&
         inDateRange(item.startDate, from.value, to.value)
     );
 
   const render = () => {
-    rows.innerHTML = filtered()
+    const visible = filtered();
+    rows.innerHTML = visible
       .map(
         (project) =>
-          `<tr><td>${project.title}</td><td>${project.clientName}</td><td>${project.serviceNames || "-"}</td><td>${project.status}</td><td>${actionButtons(project.id, "project")}</td></tr>`
+          `<tr><td>${project.title}</td><td>${project.clientName}</td><td>${project.serviceNames || "-"}</td><td><span class="status-badge status-${escapeHtml(
+            project.status
+          )}">${labelFromMap(projectStatusLabels, project.status)}</span></td><td>${actionButtons(
+            project.id,
+            "project"
+          )}</td></tr>`
       )
       .join("");
+    if (listMeta) {
+      listMeta.textContent = `نمایش ${toPersianDigits(visible.length)} مورد از ${toPersianDigits(
+        all.length
+      )} پروژه`;
+    }
   };
 
   const refresh = async () => {
@@ -1403,6 +1534,8 @@ async function initProjectsSection() {
       document.getElementById("projectStart").value = item.startDate || getTodayJalaliDate();
       setSelectedServiceIds(item.serviceIds);
       document.getElementById("projectNotes").value = item.notes || "";
+      scrollToFormTop(form);
+      document.getElementById("projectTitle").focus();
       return;
     }
 
@@ -1462,6 +1595,11 @@ async function initSettlementsSection() {
   const settlementRows = document.getElementById("settlementsRows");
   const termPartner = document.getElementById("termPartner");
   const termProject = document.getElementById("termProject");
+  const settlementTypeInput = document.getElementById("settlementType");
+  const settlementRelatedInput = document.getElementById("settlementRelated");
+  const settlementProjectInput = document.getElementById("settlementProject");
+  const settlementRelatedField = document.getElementById("settlementRelatedField");
+  const settlementFormHint = document.getElementById("settlementFormHint");
 
   const partnerSearch = document.getElementById("partnersSearch");
   const partnerFrom = document.getElementById("partnersFrom");
@@ -1470,12 +1608,38 @@ async function initSettlementsSection() {
   const settlementTypeFilter = document.getElementById("settlementsTypeFilter");
   const settlementFrom = document.getElementById("settlementsFrom");
   const settlementTo = document.getElementById("settlementsTo");
+  const settlementTabButtons = Array.from(
+    document.querySelectorAll("button[data-settlement-tab]")
+  );
+  const settlementPanes = Array.from(
+    document.querySelectorAll(".settlement-pane[data-settlement-pane]")
+  );
+
+  const setActiveSettlementPane = (paneName = "summary") => {
+    settlementTabButtons.forEach((btn) => {
+      const active = btn.dataset.settlementTab === paneName;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    settlementPanes.forEach((pane) => {
+      pane.classList.toggle("hidden", pane.dataset.settlementPane !== paneName);
+    });
+  };
+
+  settlementTabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setActiveSettlementPane(btn.dataset.settlementTab || "summary");
+    });
+  });
 
   let editingPartnerId = null;
   let editingSettlementId = null;
   let partnersAll = [];
+  let projectsAll = [];
   let settlementsAll = [];
   let termsAll = [];
+  let partnerNameMap = new Map();
+  let projectTitleMap = new Map();
 
   const paymentLabel = (item) => {
     if (item.paymentModel === "percent") return `درصدی (${toPersianDigits(item.sharePercent)}%)`;
@@ -1488,6 +1652,53 @@ async function initSettlementsSection() {
     return formatCurrency(item.salaryAmount);
   };
 
+  const settlementTypeLabel = (type) => (type === "client" ? "کارفرما" : "همکار");
+
+  const settlementMethodLabel = (method) => {
+    if (method === "cash") return "نقدی";
+    if (method === "card") return "کارت";
+    if (method === "bank") return "بانک";
+    return method || "-";
+  };
+
+  const populateSimpleSelect = (
+    selectEl,
+    items,
+    valueField,
+    labelField,
+    placeholder,
+    keepValue = true
+  ) => {
+    if (!selectEl) return;
+    const prevValue = keepValue ? String(selectEl.value || "") : "";
+    const options = [`<option value="">${placeholder}</option>`];
+    items.forEach((item) => {
+      options.push(
+        `<option value="${item[valueField]}">${escapeHtml(item[labelField] || "")}</option>`
+      );
+    });
+    selectEl.innerHTML = options.join("");
+    if (prevValue && items.some((item) => String(item[valueField]) === prevValue)) {
+      selectEl.value = prevValue;
+    }
+  };
+
+  const syncSettlementTypeUi = () => {
+    const type = settlementTypeInput?.value || "partner";
+    const isPartner = type === "partner";
+    if (settlementRelatedField) {
+      settlementRelatedField.classList.toggle("hidden", !isPartner);
+    }
+    if (!isPartner && settlementRelatedInput) {
+      settlementRelatedInput.value = "";
+    }
+    if (settlementFormHint) {
+      settlementFormHint.textContent = isPartner
+        ? "برای تسویه همکار، همکار و پروژه مرتبط را انتخاب کنید."
+        : "برای ثبت دریافتی کارفرما، پروژه مرتبط را انتخاب کنید (در صورت نیاز).";
+    }
+  };
+
   const filteredPartners = () =>
     partnersAll.filter(
       (item) =>
@@ -1497,10 +1708,23 @@ async function initSettlementsSection() {
 
   const filteredSettlements = () =>
     settlementsAll.filter(
-      (item) =>
-        textMatch(settlementSearch.value, item.settlementType, item.paymentMethod, item.description) &&
+      (item) => {
+        const relatedName = partnerNameMap.get(Number(item.relatedId || 0)) || "";
+        const projectName =
+          item.projectTitle || projectTitleMap.get(Number(item.projectId || 0)) || "";
+        return (
+          textMatch(
+            settlementSearch.value,
+            settlementTypeLabel(item.settlementType),
+            settlementMethodLabel(item.paymentMethod),
+            item.description,
+            relatedName,
+            projectName
+          ) &&
         (!settlementTypeFilter.value || item.settlementType === settlementTypeFilter.value) &&
         inDateRange(item.settlementDate, settlementFrom.value, settlementTo.value)
+        );
+      }
     );
 
   const renderPartners = () => {
@@ -1555,26 +1779,50 @@ async function initSettlementsSection() {
 
   const renderSettlements = () => {
     settlementRows.innerHTML = filteredSettlements()
-      .map(
-        (item) =>
-          `<tr><td>${item.settlementType}</td><td>${formatCurrency(item.amount)}</td><td>${item.paymentMethod}</td><td>${toJalaliDate(
-            item.settlementDate
-          )}</td><td>${item.description || "-"}</td><td>${actionButtons(
-            item.id,
-            "settlement"
-          )}</td></tr>`
-      )
+      .map((item) => {
+        const relatedName = partnerNameMap.get(Number(item.relatedId || 0)) || "-";
+        const projectName =
+          item.projectTitle || projectTitleMap.get(Number(item.projectId || 0)) || "-";
+        return `<tr>
+          <td>${settlementTypeLabel(item.settlementType)}</td>
+          <td>${item.settlementType === "partner" ? relatedName : "-"}</td>
+          <td>${projectName}</td>
+          <td>${formatCurrency(item.amount)}</td>
+          <td>${settlementMethodLabel(item.paymentMethod)}</td>
+          <td>${toJalaliDate(item.settlementDate)}</td>
+          <td>${item.description || "-"}</td>
+          <td>${actionButtons(item.id, "settlement")}</td>
+        </tr>`;
+      })
       .join("");
   };
 
   const refreshPartnerProjectSelectors = async () => {
-    const projects = await window.birHesab.invoke("projects:list");
-    termPartner.innerHTML = partnersAll
-      .map((p) => `<option value="${p.id}">${p.fullName}</option>`)
-      .join("");
-    termProject.innerHTML = projects
-      .map((p) => `<option value="${p.id}">${p.title}</option>`)
-      .join("");
+    projectsAll = await window.birHesab.invoke("projects:list");
+    projectTitleMap = new Map(
+      projectsAll.map((item) => [Number(item.id), String(item.title || "")])
+    );
+    partnerNameMap = new Map(
+      partnersAll.map((item) => [Number(item.id), String(item.fullName || "")])
+    );
+
+    populateSimpleSelect(termPartner, partnersAll, "id", "fullName", "انتخاب همکار");
+    populateSimpleSelect(termProject, projectsAll, "id", "title", "انتخاب پروژه");
+    populateSimpleSelect(
+      settlementRelatedInput,
+      partnersAll,
+      "id",
+      "fullName",
+      "بدون همکار"
+    );
+    populateSimpleSelect(
+      settlementProjectInput,
+      projectsAll,
+      "id",
+      "title",
+      "بدون پروژه"
+    );
+    syncSettlementTypeUi();
   };
 
   const refreshPartners = async () => {
@@ -1604,6 +1852,7 @@ async function initSettlementsSection() {
     if (!item) return;
 
     if (btn.dataset.action === "edit") {
+      setActiveSettlementPane("partners");
       editingPartnerId = id;
       document.getElementById("partnerName").value = item.fullName;
       document.getElementById("partnerRole").value = item.role || "";
@@ -1611,6 +1860,8 @@ async function initSettlementsSection() {
       document.getElementById("partnerPaymentModel").value = item.paymentModel || "percent";
       document.getElementById("partnerSalaryAmount").value = formatMoneyInput(item.salaryAmount || 0);
       document.getElementById("partnerSalaryPeriod").value = item.salaryPeriod || "monthly";
+      scrollToFormTop(partnerForm);
+      document.getElementById("partnerName").focus();
       return;
     }
 
@@ -1640,14 +1891,18 @@ async function initSettlementsSection() {
     if (!item) return;
 
     if (btn.dataset.action === "edit") {
+      setActiveSettlementPane("settlements");
       editingSettlementId = id;
-      document.getElementById("settlementType").value = item.settlementType;
-      document.getElementById("settlementRelated").value = item.relatedId || "";
-      document.getElementById("settlementProject").value = item.projectId || "";
+      settlementTypeInput.value = item.settlementType;
+      syncSettlementTypeUi();
+      settlementRelatedInput.value = item.relatedId || "";
+      settlementProjectInput.value = item.projectId || "";
       document.getElementById("settlementAmount").value = formatMoneyInput(item.amount);
       document.getElementById("settlementMethod").value = item.paymentMethod || "cash";
       document.getElementById("settlementDate").value = item.settlementDate || getTodayJalaliDate();
       document.getElementById("settlementDesc").value = item.description || "";
+      scrollToFormTop(settlementForm);
+      document.getElementById("settlementAmount").focus();
       return;
     }
 
@@ -1656,6 +1911,7 @@ async function initSettlementsSection() {
     if (editingSettlementId === id) {
       editingSettlementId = null;
       settlementForm.reset();
+      syncSettlementTypeUi();
     }
     await refreshSettlements();
   };
@@ -1666,6 +1922,7 @@ async function initSettlementsSection() {
   [settlementSearch, settlementTypeFilter, settlementFrom, settlementTo].forEach((el) =>
     el.addEventListener("input", renderSettlements)
   );
+  settlementTypeInput?.addEventListener("input", syncSettlementTypeUi);
 
   document.getElementById("partnersFilterReset").addEventListener("click", () => {
     partnerSearch.value = "";
@@ -1682,6 +1939,7 @@ async function initSettlementsSection() {
   });
 
   setTodayByDefault("settlementDate");
+  syncSettlementTypeUi();
   partnerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = {
@@ -1704,6 +1962,10 @@ async function initSettlementsSection() {
 
   partnerTermForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!termPartner.value || !termProject.value) {
+      alert("همکار و پروژه را انتخاب کنید.");
+      return;
+    }
     await window.birHesab.invoke("partners:terms:upsert", {
       partnerId: termPartner.value,
       projectId: termProject.value,
@@ -1718,9 +1980,9 @@ async function initSettlementsSection() {
   settlementForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = {
-      settlementType: document.getElementById("settlementType").value,
-      relatedId: document.getElementById("settlementRelated").value || null,
-      projectId: document.getElementById("settlementProject").value || null,
+      settlementType: settlementTypeInput.value,
+      relatedId: settlementRelatedInput.value || null,
+      projectId: settlementProjectInput.value || null,
       amount: parseMoneyInput(document.getElementById("settlementAmount").value),
       paymentMethod: document.getElementById("settlementMethod").value,
       settlementDate: document.getElementById("settlementDate").value,
@@ -1735,6 +1997,7 @@ async function initSettlementsSection() {
 
     editingSettlementId = null;
     settlementForm.reset();
+    syncSettlementTypeUi();
     setTodayByDefault("settlementDate");
     await refreshSettlements();
   });
@@ -1742,11 +2005,21 @@ async function initSettlementsSection() {
   await refreshPartners();
   await refreshTerms();
   await refreshSettlements();
+
+  if (settlementTabButtons.length && settlementPanes.length) {
+    const initialTab =
+      settlementTabButtons.find((btn) => btn.classList.contains("active"))?.dataset
+        .settlementTab ||
+      settlementTabButtons[0].dataset.settlementTab ||
+      "summary";
+    setActiveSettlementPane(initialTab);
+  }
 }
 
 async function initExpensesSection() {
   const form = document.getElementById("expenseForm");
   const rows = document.getElementById("expensesRows");
+  const listMeta = document.getElementById("expensesListMeta");
   const search = document.getElementById("expensesSearch");
   const scopeFilter = document.getElementById("expensesScopeFilter");
   const from = document.getElementById("expensesFrom");
@@ -1757,15 +2030,36 @@ async function initExpensesSection() {
   const filtered = () =>
     all.filter(
       (item) =>
-        textMatch(search.value, item.scope, item.category, item.description, item.paidBy) &&
+        textMatch(
+          search.value,
+          item.scope,
+          labelFromMap(expenseScopeLabels, item.scope),
+          item.category,
+          item.description,
+          item.paidBy
+        ) &&
         (!scopeFilter.value || item.scope === scopeFilter.value) &&
         inDateRange(item.expenseDate, from.value, to.value)
     );
 
   const render = () => {
-    rows.innerHTML = filtered()
-      .map((expense) => `<tr><td>${expense.scope}</td><td>${expense.category}</td><td>${formatCurrency(expense.amount)}</td><td>${toJalaliDate(expense.expenseDate)}</td><td>${expense.description || "-"}</td><td>${actionButtons(expense.id, "expense")}</td></tr>`)
+    const visible = filtered();
+    rows.innerHTML = visible
+      .map(
+        (expense) =>
+          `<tr><td>${labelFromMap(expenseScopeLabels, expense.scope)}</td><td>${expense.category}</td><td>${formatCurrency(
+            expense.amount
+          )}</td><td>${toJalaliDate(expense.expenseDate)}</td><td>${expense.description || "-"}</td><td>${actionButtons(
+            expense.id,
+            "expense"
+          )}</td></tr>`
+      )
       .join("");
+    if (listMeta) {
+      listMeta.textContent = `نمایش ${toPersianDigits(visible.length)} مورد از ${toPersianDigits(
+        all.length
+      )} هزینه`;
+    }
   };
 
   const refresh = async () => {
@@ -1788,6 +2082,8 @@ async function initExpensesSection() {
       document.getElementById("expenseAmount").value = formatMoneyInput(item.amount);
       document.getElementById("expenseDate").value = item.expenseDate || getTodayJalaliDate();
       document.getElementById("expenseDesc").value = item.description || "";
+      scrollToFormTop(form);
+      document.getElementById("expenseCategory").focus();
       return;
     }
 
@@ -1838,6 +2134,7 @@ async function initExpensesSection() {
 async function initCashboxSection() {
   const form = document.getElementById("cashboxForm");
   const rows = document.getElementById("cashboxRows");
+  const listMeta = document.getElementById("cashboxListMeta");
   const search = document.getElementById("cashboxSearch");
   const typeFilter = document.getElementById("cashboxTypeFilter");
   const from = document.getElementById("cashboxFrom");
@@ -1859,9 +2156,15 @@ async function initCashboxSection() {
   };
 
   const render = () => {
-    rows.innerHTML = filtered()
+    const visible = filtered();
+    rows.innerHTML = visible
       .map((entry) => `<tr><td>${entry.entryType === "in" ? "دخل" : "خرج"}</td><td>${formatCurrency(entry.amount)}</td><td>${toJalaliDate(entry.entryDate)}</td><td>${entry.description || "-"}</td><td>${actionButtons(entry.id, "cashbox")}</td></tr>`)
       .join("");
+    if (listMeta) {
+      listMeta.textContent = `نمایش ${toPersianDigits(visible.length)} مورد از ${toPersianDigits(
+        all.length
+      )} تراکنش`;
+    }
   };
 
   const refresh = async () => {
@@ -1881,6 +2184,8 @@ async function initCashboxSection() {
       document.getElementById("cashboxAmount").value = formatMoneyInput(item.amount);
       document.getElementById("cashboxDate").value = item.entryDate || getTodayJalaliDate();
       document.getElementById("cashboxDesc").value = item.description || "";
+      scrollToFormTop(form);
+      document.getElementById("cashboxAmount").focus();
       return;
     }
 
@@ -2261,6 +2566,275 @@ function renderGlobalReminderBanner(items, dueNowCount = 0) {
   )} | ${summary}`;
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeRelationId(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return num;
+}
+
+function buildReminderUpdatePayload(reminder, overrides = {}) {
+  const repeatType = normalizeReminderRepeatType(
+    overrides.repeatType ?? reminder.repeatType
+  );
+  const rawRepeatUntil = overrides.repeatUntil ?? reminder.repeatUntil;
+  let repeatUntil = toCanonicalJalaliDate(rawRepeatUntil || "");
+  if (repeatType === "none") {
+    repeatUntil = "";
+  }
+  const rawReminderDate = overrides.reminderDate ?? reminder.reminderDate;
+  const rawReminderTime = overrides.reminderTime ?? reminder.reminderTime;
+  const rawIsDone = overrides.isDone ?? reminder.isDone;
+  const rawSnoozeUntil = overrides.snoozeUntil ?? reminder.snoozeUntil;
+  return {
+    id: Number(reminder.id),
+    title: String(overrides.title ?? reminder.title ?? "").trim(),
+    description: String(overrides.description ?? reminder.description ?? "").trim(),
+    reminderDate: toCanonicalJalaliDate(rawReminderDate || ""),
+    reminderTime: normalizeReminderTime(rawReminderTime || "09:00"),
+    isDone: Boolean(Number(rawIsDone || 0)),
+    repeatType,
+    repeatUntil,
+    snoozeUntil: String(rawSnoozeUntil || ""),
+    projectId: normalizeRelationId(overrides.projectId ?? reminder.projectId),
+    partnerId: normalizeRelationId(overrides.partnerId ?? reminder.partnerId)
+  };
+}
+
+function getReminderAlertElements() {
+  return {
+    modal: document.getElementById("reminderAlertModal"),
+    closeBtn: document.getElementById("closeReminderAlertBtn"),
+    summary: document.getElementById("reminderAlertSummary"),
+    list: document.getElementById("reminderAlertList")
+  };
+}
+
+function hideReminderAlertModal() {
+  const { modal } = getReminderAlertElements();
+  if (!modal) return;
+  modal.classList.add("hidden");
+}
+
+function renderReminderAlertModal() {
+  const { modal, summary, list } = getReminderAlertElements();
+  if (!modal || !summary || !list) return;
+
+  if (!reminderAlertItems.length) {
+    summary.textContent = "یادآور فعال جدیدی برای اقدام وجود ندارد.";
+    list.innerHTML = "";
+    hideReminderAlertModal();
+    return;
+  }
+
+  const dueNowCount = reminderAlertItems.filter((item) => !Number(item.isDone || 0)).length;
+  summary.textContent = `یادآورهای امروز: ${toPersianDigits(
+    reminderAlertLastDueTodayCount
+  )} مورد | در این پاپ‌آپ: ${toPersianDigits(dueNowCount)} مورد`;
+
+  list.innerHTML = reminderAlertItems
+    .map((item) => {
+      const relation = [item.projectTitle ? `پروژه: ${item.projectTitle}` : "", item.partnerName ? `همکار: ${item.partnerName}` : ""]
+        .filter(Boolean)
+        .join(" | ");
+      const repeatLabel = getReminderPatternLabel(item);
+      const timeLabel = normalizeReminderTime(item.reminderTime || "09:00");
+      const snoozeLabel = getReminderSnoozeLabel(item);
+      return `
+        <article class="reminder-alert-item" data-id="${item.id}">
+          <div class="reminder-alert-head">
+            <strong>${escapeHtml(item.title || "-")}</strong>
+            <span class="reminder-alert-meta">ساعت ${toPersianDigits(timeLabel)}</span>
+          </div>
+          <div class="reminder-alert-meta">
+            تاریخ: ${toPersianDigits(item.reminderDate || "-")} | تکرار: ${repeatLabel}${
+              snoozeLabel !== "-" ? ` | اسنوز تا: ${snoozeLabel}` : ""
+            }${relation ? ` | ${escapeHtml(relation)}` : ""}
+          </div>
+          <div class="reminder-alert-fields">
+            <div>
+              <label>عنوان</label>
+              <input type="text" data-field="title" maxlength="120" value="${escapeHtml(
+                item.title || ""
+              )}" />
+            </div>
+            <div>
+              <label>تاریخ</label>
+              <input
+                type="text"
+                data-field="reminderDate"
+                data-jdp
+                inputmode="numeric"
+                autocomplete="off"
+                value="${escapeHtml(item.reminderDate || getTodayJalaliDate())}"
+              />
+            </div>
+            <div>
+              <label>ساعت</label>
+              <input type="time" data-field="reminderTime" value="${escapeHtml(timeLabel)}" />
+            </div>
+            <div class="full">
+              <label>توضیحات</label>
+              <textarea data-field="description">${escapeHtml(item.description || "")}</textarea>
+            </div>
+          </div>
+          <div class="reminder-alert-actions">
+            <button class="btn-primary" type="button" data-alert-action="save" data-id="${item.id}">ذخیره تغییرات</button>
+            <button class="btn-secondary" type="button" data-alert-action="done" data-id="${item.id}">تأیید انجام</button>
+            <button class="btn-secondary" type="button" data-alert-action="snooze" data-minutes="10" data-id="${item.id}">اسنوز ۱۰د</button>
+            <button class="btn-secondary" type="button" data-alert-action="snooze" data-minutes="30" data-id="${item.id}">اسنوز ۳۰د</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  setupIranCalendar();
+}
+
+function showReminderAlertModal(items, dueTodayCount = 0) {
+  if (!Array.isArray(items) || !items.length) return;
+  const { modal } = getReminderAlertElements();
+  if (!modal) return;
+
+  const nextMap = new Map(reminderAlertItems.map((item) => [Number(item.id), item]));
+  items.forEach((item) => {
+    nextMap.set(Number(item.id), item);
+  });
+  reminderAlertItems = Array.from(nextMap.values()).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+  reminderAlertLastDueTodayCount = Math.max(reminderAlertLastDueTodayCount, Number(dueTodayCount) || 0);
+  renderReminderAlertModal();
+  modal.classList.remove("hidden");
+}
+
+function removeReminderAlertItem(id) {
+  reminderAlertItems = reminderAlertItems.filter((item) => Number(item.id) !== Number(id));
+  if (!reminderAlertItems.length) {
+    reminderAlertLastDueTodayCount = 0;
+  }
+  renderReminderAlertModal();
+}
+
+function setupReminderAlertModal() {
+  if (reminderAlertModalBound) return;
+  const { modal, closeBtn, list } = getReminderAlertElements();
+  if (!modal || !closeBtn || !list) return;
+
+  closeBtn.addEventListener("click", () => {
+    hideReminderAlertModal();
+  });
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      hideReminderAlertModal();
+    }
+  });
+
+  list.addEventListener("click", async (event) => {
+    const btn = event.target.closest("button[data-alert-action][data-id]");
+    if (!btn) return;
+
+    const action = btn.dataset.alertAction;
+    const id = Number(btn.dataset.id);
+    const card = btn.closest(".reminder-alert-item");
+    if (!card || !Number.isFinite(id)) return;
+
+    const current = reminderAlertItems.find((item) => Number(item.id) === id);
+    if (!current) return;
+
+    btn.disabled = true;
+    try {
+      if (action === "done") {
+        await window.birHesab.invoke("reminders:toggle-done", {
+          id,
+          isDone: true
+        });
+        removeReminderAlertItem(id);
+        return;
+      }
+
+      if (action === "snooze") {
+        const minutes = Math.max(1, Math.min(24 * 60, Number(btn.dataset.minutes || 30)));
+        await window.birHesab.invoke("reminders:snooze", {
+          id,
+          minutes
+        });
+        removeReminderAlertItem(id);
+        return;
+      }
+
+      if (action === "save") {
+        const titleInput = card.querySelector("input[data-field='title']");
+        const dateInput = card.querySelector("input[data-field='reminderDate']");
+        const timeInput = card.querySelector("input[data-field='reminderTime']");
+        const descInput = card.querySelector("textarea[data-field='description']");
+
+        const title = String(titleInput?.value || "").trim();
+        if (!title) {
+          alert("عنوان ریمایندر نمی‌تواند خالی باشد.");
+          return;
+        }
+
+        const reminderDate = toCanonicalJalaliDate(dateInput?.value || "");
+        if (!parseJalaliDate(reminderDate)) {
+          alert("تاریخ یادآور معتبر نیست.");
+          return;
+        }
+
+        const reminderTime = normalizeReminderTime(timeInput?.value || current.reminderTime || "09:00");
+        const description = String(descInput?.value || "").trim();
+        const payload = buildReminderUpdatePayload(current, {
+          title,
+          description,
+          reminderDate,
+          reminderTime
+        });
+
+        if (!payload.title) {
+          alert("عنوان ریمایندر نمی‌تواند خالی باشد.");
+          return;
+        }
+
+        if (!parseJalaliDate(payload.reminderDate)) {
+          alert("تاریخ یادآور معتبر نیست.");
+          return;
+        }
+
+        if (payload.repeatUntil && compareJalaliDates(payload.repeatUntil, payload.reminderDate) < 0) {
+          alert("تاریخ پایان تکرار نباید قبل از تاریخ شروع باشد.");
+          return;
+        }
+
+        await window.birHesab.invoke("reminders:update", payload);
+        reminderAlertItems = reminderAlertItems.map((item) =>
+          Number(item.id) === id
+            ? {
+                ...item,
+                ...payload,
+                isDone: payload.isDone ? 1 : 0
+              }
+            : item
+        );
+        renderReminderAlertModal();
+      }
+    } catch (error) {
+      alert(`خطا در عملیات ریمایندر: ${error.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  reminderAlertModalBound = true;
+}
+
 async function runReminderNotificationCheck() {
   const rawReminders = await window.birHesab.invoke("reminders:list");
   const reminders = (rawReminders || []).map((row) => ({
@@ -2291,9 +2865,14 @@ async function runReminderNotificationCheck() {
   });
   if (!fresh.length) return;
 
+  showReminderAlertModal(fresh, dueToday.length);
+
   const body = fresh
     .slice(0, 4)
-    .map((item) => item.title)
+    .map(
+      (item) =>
+        `${item.title} (${toPersianDigits(normalizeReminderTime(item.reminderTime || "09:00"))})`
+    )
     .join(" | ");
 
   try {
@@ -2366,6 +2945,7 @@ async function bootstrap() {
   }
   setupModeTabs();
   setupHelpModal();
+  setupReminderAlertModal();
   await initSidebar();
   await renderSection();
   setupBackupEvents();

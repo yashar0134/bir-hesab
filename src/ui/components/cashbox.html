@@ -1,5 +1,6 @@
-﻿<section class="section-card">
+<section class="section-card">
   <h2 class="section-title">ثبت ساده دخل و خرج</h2>
+  <p class="list-note">برای ثبت سریع تراکنش‌های روزانه صندوق، فقط مبلغ، تاریخ و توضیح کافی است.</p>
   <form id="cashboxForm">
     <div class="grid-3">
       <div>
@@ -35,16 +36,19 @@
     <input id="cashboxTo" data-jdp placeholder="تا تاریخ" />
     <button id="cashboxFilterReset" type="button" class="btn-secondary">پاکسازی</button>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>نوع</th>
-        <th>مبلغ</th>
-        <th>تاریخ</th>
-        <th>توضیح</th>
-        <th>عملیات</th>
-      </tr>
-    </thead>
-    <tbody id="cashboxRows"></tbody>
-  </table>
+  <p id="cashboxListMeta" class="list-note"></p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>نوع</th>
+          <th>مبلغ</th>
+          <th>تاریخ</th>
+          <th>توضیح</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="cashboxRows"></tbody>
+    </table>
+  </div>
 </section>

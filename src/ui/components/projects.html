@@ -1,5 +1,6 @@
-﻿<section class="section-card">
+<section class="section-card">
   <h2 class="section-title">مدیریت پروژه‌ها</h2>
+  <p class="list-note">پروژه را با خدمات، وضعیت و تاریخ شروع ثبت کنید تا تسویه و گزارش دقیق‌تر شود.</p>
   <form id="projectForm">
     <div class="grid-3">
       <div>
@@ -53,16 +54,19 @@
     <input id="projectsTo" data-jdp placeholder="تا تاریخ" />
     <button id="projectsFilterReset" type="button" class="btn-secondary">پاکسازی</button>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>عنوان</th>
-        <th>کارفرما</th>
-        <th>خدمت</th>
-        <th>وضعیت</th>
-        <th>عملیات</th>
-      </tr>
-    </thead>
-    <tbody id="projectsRows"></tbody>
-  </table>
+  <p id="projectsListMeta" class="list-note"></p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>عنوان</th>
+          <th>کارفرما</th>
+          <th>خدمت</th>
+          <th>وضعیت</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="projectsRows"></tbody>
+    </table>
+  </div>
 </section>

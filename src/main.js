@@ -364,6 +364,14 @@ function registerNotificationHandlers() {
       body,
       silent: false
     });
+    notice.on("click", () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    });
     notice.show();
     return { ok: true, sent: true };
   });

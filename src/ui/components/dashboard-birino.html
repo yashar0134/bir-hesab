@@ -1,78 +1,94 @@
-﻿<section class="section-card">
-  <h2 class="section-title">داشبورد بیرینو</h2>
+<section class="section-card dashboard-hero">
+  <div class="dashboard-hero-head">
+    <div>
+      <h2 class="section-title">داشبورد بیرینو</h2>
+      <p class="list-note">خلاصه عملکرد مالی کسب‌وکار در نماهای ماهانه، سالانه و سود پروژه/همکار</p>
+    </div>
+    <div class="form-actions dashboard-header-actions">
+      <button id="exportBusinessExcel" class="btn-secondary" type="button">خروجی Excel</button>
+      <button id="exportBusinessPdf" class="btn-secondary" type="button">خروجی PDF</button>
+    </div>
+  </div>
   <div class="stat-grid" id="birinoStats"></div>
-  <div class="form-actions">
-    <button id="exportBusinessExcel" class="btn-secondary" type="button">خروجی Excel</button>
-    <button id="exportBusinessPdf" class="btn-secondary" type="button">خروجی PDF</button>
-  </div>
-  <p class="list-note">نمایش خلاصه عملکرد مالی کسب‌وکار در ۶ ماه اخیر</p>
 </section>
 
-<section class="section-card">
-  <h3 class="section-title">گردش ماهانه صندوق</h3>
-  <div id="birinoMonthlyChart" class="chart-grid"></div>
-  <table>
-    <thead>
-      <tr>
-        <th>ماه</th>
-        <th>ورودی</th>
-        <th>خروجی</th>
-      </tr>
-    </thead>
-    <tbody id="birinoMonthlyRows"></tbody>
-  </table>
-</section>
+<div class="feature-grid feature-grid-2">
+  <section class="section-card">
+    <h3 class="section-title">گردش ماهانه صندوق</h3>
+    <div id="birinoMonthlyChart" class="chart-grid"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ماه</th>
+            <th>ورودی</th>
+            <th>خروجی</th>
+          </tr>
+        </thead>
+        <tbody id="birinoMonthlyRows"></tbody>
+      </table>
+    </div>
+  </section>
 
-<section class="section-card">
-  <h3 class="section-title">گزارش سالانه کسب‌وکار</h3>
-  <div id="birinoYearlyChart" class="chart-grid"></div>
-  <table>
-    <thead>
-      <tr>
-        <th>سال</th>
-        <th>ورودی</th>
-        <th>خروجی</th>
-      </tr>
-    </thead>
-    <tbody id="birinoYearlyRows"></tbody>
-  </table>
-</section>
+  <section class="section-card">
+    <h3 class="section-title">گزارش سالانه کسب‌وکار</h3>
+    <div id="birinoYearlyChart" class="chart-grid"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>سال</th>
+            <th>ورودی</th>
+            <th>خروجی</th>
+          </tr>
+        </thead>
+        <tbody id="birinoYearlyRows"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
 
-<section class="section-card">
-  <h3 class="section-title">گزارش سود پروژه‌ها</h3>
-  <div class="form-actions">
-    <button id="exportProjectProfitExcel" class="btn-secondary" type="button">خروجی Excel سود پروژه/همکار</button>
-    <button id="exportProjectProfitPdf" class="btn-secondary" type="button">خروجی PDF سود پروژه/همکار</button>
-  </div>
-  <p id="projectProfitSummary" class="list-note"></p>
-  <table>
-    <thead>
-      <tr>
-        <th>پروژه</th>
-        <th>کارفرما</th>
-        <th>دریافتی از کارفرما</th>
-        <th>قابل پرداخت به همکار</th>
-        <th>پرداخت‌شده به همکار</th>
-        <th>سود خالص (انتظاری)</th>
-        <th>سود خالص (تحقق‌یافته)</th>
-      </tr>
-    </thead>
-    <tbody id="projectProfitRows"></tbody>
-  </table>
-</section>
+<div class="feature-grid feature-grid-2">
+  <section class="section-card">
+    <h3 class="section-title">گزارش سود پروژه‌ها</h3>
+    <div class="form-actions">
+      <button id="exportProjectProfitExcel" class="btn-secondary" type="button">خروجی Excel سود پروژه/همکار</button>
+      <button id="exportProjectProfitPdf" class="btn-secondary" type="button">خروجی PDF سود پروژه/همکار</button>
+    </div>
+    <p id="projectProfitSummary" class="list-note"></p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>پروژه</th>
+            <th>کارفرما</th>
+            <th>دریافتی از کارفرما</th>
+            <th>قابل پرداخت به همکار</th>
+            <th>پرداخت‌شده به همکار</th>
+            <th>سود خالص (انتظاری)</th>
+            <th>سود خالص (تحقق‌یافته)</th>
+          </tr>
+        </thead>
+        <tbody id="projectProfitRows"></tbody>
+      </table>
+    </div>
+  </section>
 
-<section class="section-card">
-  <h3 class="section-title">گزارش همکاران (سود/مانده)</h3>
-  <table>
-    <thead>
-      <tr>
-        <th>همکار</th>
-        <th>تعداد پروژه</th>
-        <th>قابل پرداخت</th>
-        <th>پرداخت‌شده</th>
-        <th>مانده</th>
-      </tr>
-    </thead>
-    <tbody id="partnerProfitRows"></tbody>
-  </table>
-</section>
+  <section class="section-card">
+    <h3 class="section-title">گزارش همکاران (سود/مانده)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>همکار</th>
+            <th>تعداد پروژه</th>
+            <th>قابل پرداخت</th>
+            <th>پرداخت‌شده</th>
+            <th>مانده</th>
+          </tr>
+        </thead>
+        <tbody id="partnerProfitRows"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
