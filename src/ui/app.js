@@ -360,6 +360,69 @@ function reminderOccursOnDate(reminder, targetDate) {
   return false;
 }
 
+function normalizeReminderTime(value) {
+  const v = normalizeDigits(String(value || "")).trim();
+  const m = v.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return "09:00";
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return "09:00";
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return "09:00";
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function reminderTimeToMinutes(value) {
+  const normalized = normalizeReminderTime(value);
+  const [hh, mm] = normalized.split(":").map((x) => Number(x));
+  return hh * 60 + mm;
+}
+
+function getNowTehranTimeMinutes() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Tehran"
+  }).formatToParts(new Date());
+  const hh = Number(parts.find((p) => p.type === "hour")?.value || 0);
+  const mm = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  return hh * 60 + mm;
+}
+
+function getReminderSnoozeLabel(reminder) {
+  if (!reminder?.snoozeUntil) return "-";
+  const d = new Date(reminder.snoozeUntil);
+  if (Number.isNaN(d.getTime())) return "-";
+  return new Intl.DateTimeFormat("fa-IR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "Asia/Tehran"
+  }).format(d);
+}
+
+function isReminderDueNow(reminder, todayJalali, nowDate = new Date()) {
+  if (Number(reminder.isDone || 0) === 1) return false;
+  if (!reminderOccursOnDate(reminder, todayJalali)) return false;
+
+  const snoozeUntilMs = Date.parse(reminder.snoozeUntil || "");
+  if (!Number.isNaN(snoozeUntilMs)) {
+    return nowDate.getTime() >= snoozeUntilMs;
+  }
+
+  const nowMinutes = getNowTehranTimeMinutes();
+  const reminderMinutes = reminderTimeToMinutes(reminder.reminderTime || "09:00");
+  return nowMinutes >= reminderMinutes;
+}
+
+function getReminderTriggerReference(reminder, todayJalali) {
+  const snoozeUntilMs = Date.parse(reminder.snoozeUntil || "");
+  if (!Number.isNaN(snoozeUntilMs)) {
+    return `snooze:${new Date(snoozeUntilMs).toISOString()}`;
+  }
+  const time = normalizeReminderTime(reminder.reminderTime || "09:00");
+  return `slot:${todayJalali} ${time}`;
+}
+
 function textMatch(query, ...fields) {
   const q = normalizeDigits(query || "").toLowerCase().trim();
   if (!q) return true;
@@ -647,6 +710,7 @@ async function initRemindersSection() {
   const reminderTitleInput = document.getElementById("reminderTitle");
   const reminderDescInput = document.getElementById("reminderDescription");
   const reminderDoneInput = document.getElementById("reminderDone");
+  const reminderTimeInput = document.getElementById("reminderTime");
   const reminderRepeatTypeInput = document.getElementById("reminderRepeatType");
   const reminderRepeatUntilInput = document.getElementById("reminderRepeatUntil");
   const reminderProjectInput = document.getElementById("reminderProject");
@@ -681,8 +745,10 @@ async function initRemindersSection() {
     (rows || []).map((row) => ({
       ...row,
       reminderDate: toCanonicalJalaliDate(row.reminderDate),
+      reminderTime: normalizeReminderTime(row.reminderTime || "09:00"),
       repeatType: normalizeReminderRepeatType(row.repeatType),
       repeatUntil: row.repeatUntil ? toCanonicalJalaliDate(row.repeatUntil) : "",
+      snoozeUntil: row.snoozeUntil || "",
       projectId: row.projectId ? Number(row.projectId) : null,
       partnerId: row.partnerId ? Number(row.partnerId) : null,
       isDone: Number(row.isDone || 0)
@@ -698,24 +764,27 @@ async function initRemindersSection() {
       partnerId: row.relatedId ? Number(row.relatedId) : null
     }));
 
-  const renderNoticeBox = (dueToday) => {
+  const renderNoticeBox = (dueNow, dueTodayCount) => {
     if (!reminderInAppNotice) return;
-    if (!dueToday.length) {
+    if (!dueNow.length) {
       reminderInAppNotice.classList.add("hidden");
       reminderInAppNotice.innerHTML = "";
       return;
     }
-    const topItems = dueToday
+    const topItems = dueNow
       .slice(0, 5)
       .map((item) => {
         const projectLabel = item.projectTitle ? ` | پروژه: ${item.projectTitle}` : "";
         const partnerLabel = item.partnerName ? ` | همکار: ${item.partnerName}` : "";
-        return `<li>${item.title}${projectLabel}${partnerLabel}</li>`;
+        const timeLabel = normalizeReminderTime(item.reminderTime || "09:00");
+        return `<li>${item.title} | ساعت ${toPersianDigits(timeLabel)}${projectLabel}${partnerLabel}</li>`;
       })
       .join("");
     reminderInAppNotice.classList.remove("hidden");
     reminderInAppNotice.innerHTML = `
-      <strong>یادآورهای امروز (${toPersianDigits(dueToday.length)})</strong>
+      <strong>یادآورهای فعال الان (${toPersianDigits(dueNow.length)}) از ${toPersianDigits(
+        dueTodayCount
+      )} مورد امروز</strong>
       <ul>${topItems}</ul>
     `;
   };
@@ -857,13 +926,18 @@ async function initRemindersSection() {
     const reminderLines = bucket.reminders
       .map((item) => {
         const repeatLabel = getReminderPatternLabel(item);
+        const timeLabel = normalizeReminderTime(item.reminderTime || "09:00");
+        const snoozeLabel = getReminderSnoozeLabel(item);
         const relation = [
           item.projectTitle ? `پروژه: ${item.projectTitle}` : "",
           item.partnerName ? `همکار: ${item.partnerName}` : ""
         ]
           .filter(Boolean)
           .join(" | ");
-        return `• ${item.title}${item.isDone ? " (انجام‌شده)" : ""} | ${repeatLabel}${relation ? ` | ${relation}` : ""}`;
+        const snoozeInfo = snoozeLabel !== "-" ? ` | اسنوز تا: ${snoozeLabel}` : "";
+        return `• ${item.title}${item.isDone ? " (انجام‌شده)" : ""} | ساعت ${toPersianDigits(
+          timeLabel
+        )} | ${repeatLabel}${snoozeInfo}${relation ? ` | ${relation}` : ""}`;
       })
       .join("<br>");
 
@@ -940,11 +1014,13 @@ async function initRemindersSection() {
           <tr>
             <td>${item.title}</td>
             <td>${toPersianDigits(item.reminderDate)}</td>
+            <td>${toPersianDigits(normalizeReminderTime(item.reminderTime || "09:00"))}</td>
             <td>${getReminderPatternLabel(item)}${
               item.repeatUntil ? ` تا ${toPersianDigits(item.repeatUntil)}` : ""
             }</td>
             <td>${item.projectTitle || "-"}</td>
             <td>${item.partnerName || "-"}</td>
+            <td>${getReminderSnoozeLabel(item)}</td>
             <td>${item.isDone ? "انجام‌شده" : "باز"}</td>
             <td>${item.description || "-"}</td>
             <td>
@@ -953,6 +1029,12 @@ async function initRemindersSection() {
                 <button class="btn-secondary" type="button" data-action="toggle" data-id="${item.id}">${
                   item.isDone ? "بازکردن" : "انجام شد"
                 }</button>
+                <button class="btn-secondary" type="button" data-action="snooze30" data-id="${item.id}">اسنوز ۳۰د</button>
+                ${
+                  item.snoozeUntil
+                    ? `<button class="btn-secondary" type="button" data-action="clear-snooze" data-id="${item.id}">لغو اسنوز</button>`
+                    : ""
+                }
                 <button class="btn-danger" type="button" data-action="delete" data-id="${item.id}">حذف</button>
               </div>
             </td>
@@ -967,13 +1049,15 @@ async function initRemindersSection() {
     const dueToday = reminders.filter(
       (item) => !item.isDone && reminderOccursOnDate(item, todayStr)
     );
-    renderNoticeBox(dueToday);
+    const dueNow = dueToday.filter((item) => isReminderDueNow(item, todayStr));
+    renderNoticeBox(dueNow, dueToday.length);
   };
 
   const resetFormState = () => {
     editingReminderId = null;
     reminderForm.reset();
     reminderDoneInput.value = "0";
+    reminderTimeInput.value = "09:00";
     reminderRepeatTypeInput.value = "none";
     reminderRepeatUntilInput.value = "";
     reminderProjectInput.value = "";
@@ -1039,6 +1123,7 @@ async function initRemindersSection() {
       reminderDescInput.value = item.description || "";
       reminderDateInput.value = item.reminderDate || selectedDate;
       reminderDoneInput.value = item.isDone ? "1" : "0";
+      reminderTimeInput.value = normalizeReminderTime(item.reminderTime || "09:00");
       reminderRepeatTypeInput.value = normalizeReminderRepeatType(item.repeatType);
       reminderRepeatUntilInput.value = item.repeatUntil || "";
       reminderProjectInput.value = item.projectId || "";
@@ -1051,6 +1136,21 @@ async function initRemindersSection() {
         viewMonth = parsed.jm;
       }
       renderCalendar();
+      return;
+    }
+
+    if (btn.dataset.action === "snooze30") {
+      await window.birHesab.invoke("reminders:snooze", {
+        id,
+        minutes: 30
+      });
+      await refresh();
+      return;
+    }
+
+    if (btn.dataset.action === "clear-snooze") {
+      await window.birHesab.invoke("reminders:clear-snooze", { id });
+      await refresh();
       return;
     }
 
@@ -1091,6 +1191,7 @@ async function initRemindersSection() {
     if (repeatType === "none") {
       repeatUntil = "";
     }
+    const reminderTime = normalizeReminderTime(reminderTimeInput.value || "09:00");
 
     if (repeatUntil && !parseJalaliDate(repeatUntil)) {
       alert("تاریخ پایان تکرار معتبر نیست.");
@@ -1102,13 +1203,16 @@ async function initRemindersSection() {
       return;
     }
 
+    const editingReminder = reminders.find((x) => x.id === editingReminderId);
     const payload = {
       title: reminderTitleInput.value.trim(),
       description: reminderDescInput.value.trim(),
       reminderDate,
+      reminderTime,
       isDone: reminderDoneInput.value === "1",
       repeatType,
       repeatUntil,
+      snoozeUntil: editingReminder?.snoozeUntil || "",
       projectId: reminderProjectInput.value || null,
       partnerId: reminderPartnerInput.value || null
     };
@@ -1138,6 +1242,7 @@ async function initRemindersSection() {
   });
 
   setTodayByDefault("reminderDate");
+  if (reminderTimeInput && !reminderTimeInput.value) reminderTimeInput.value = "09:00";
   await refresh();
 }
 
@@ -2135,7 +2240,7 @@ function setupUpdaterEvents() {
   runCheck();
 }
 
-function renderGlobalReminderBanner(items) {
+function renderGlobalReminderBanner(items, dueNowCount = 0) {
   const banner = document.getElementById("globalReminderBanner");
   if (!banner) return;
   if (!items.length) {
@@ -2145,10 +2250,15 @@ function renderGlobalReminderBanner(items) {
   }
   const summary = items
     .slice(0, 3)
-    .map((item) => item.title)
+    .map(
+      (item) =>
+        `${item.title} (${toPersianDigits(normalizeReminderTime(item.reminderTime || "09:00"))})`
+    )
     .join(" | ");
   banner.classList.remove("hidden");
-  banner.textContent = `یادآورهای امروز: ${toPersianDigits(items.length)} مورد | ${summary}`;
+  banner.textContent = `یادآورهای امروز: ${toPersianDigits(items.length)} مورد | قابل اقدام الان: ${toPersianDigits(
+    dueNowCount
+  )} | ${summary}`;
 }
 
 async function runReminderNotificationCheck() {
@@ -2156,21 +2266,27 @@ async function runReminderNotificationCheck() {
   const reminders = (rawReminders || []).map((row) => ({
     ...row,
     reminderDate: toCanonicalJalaliDate(row.reminderDate),
+    reminderTime: normalizeReminderTime(row.reminderTime || "09:00"),
     repeatType: normalizeReminderRepeatType(row.repeatType),
     repeatUntil: row.repeatUntil ? toCanonicalJalaliDate(row.repeatUntil) : "",
+    snoozeUntil: row.snoozeUntil || "",
     isDone: Number(row.isDone || 0)
   }));
 
+  const now = new Date();
   const today = toCanonicalJalaliDate(getTodayJalaliDate());
   const dueToday = reminders.filter(
     (item) => !item.isDone && reminderOccursOnDate(item, today)
   );
+  const dueNow = dueToday.filter((item) => isReminderDueNow(item, today, now));
 
-  renderGlobalReminderBanner(dueToday);
+  renderGlobalReminderBanner(dueToday, dueNow.length);
 
-  const todayKey = toDateKey(today);
-  const fresh = dueToday.filter((item) => {
-    const key = `birhesab-global-notified-${item.id}-${todayKey}`;
+  const fresh = dueNow.filter((item) => {
+    const key = `birhesab-global-notified-${item.id}-${getReminderTriggerReference(
+      item,
+      today
+    )}`;
     return !localStorage.getItem(key);
   });
   if (!fresh.length) return;
@@ -2190,7 +2306,10 @@ async function runReminderNotificationCheck() {
   }
 
   fresh.forEach((item) => {
-    const key = `birhesab-global-notified-${item.id}-${todayKey}`;
+    const key = `birhesab-global-notified-${item.id}-${getReminderTriggerReference(
+      item,
+      today
+    )}`;
     localStorage.setItem(key, new Date().toISOString());
   });
 }
@@ -2209,7 +2328,7 @@ function setupReminderNotifications() {
   if (reminderNotificationsTimer) {
     clearInterval(reminderNotificationsTimer);
   }
-  reminderNotificationsTimer = setInterval(run, 5 * 60 * 1000);
+  reminderNotificationsTimer = setInterval(run, 60 * 1000);
 }
 
 function setupHelpModal() {

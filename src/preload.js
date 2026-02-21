@@ -25,6 +25,8 @@ const invokeChannels = new Set([
   "reminders:create",
   "reminders:update",
   "reminders:toggle-done",
+  "reminders:snooze",
+  "reminders:clear-snooze",
   "reminders:delete",
   "reminders:calendar-data",
   "expenses:list",

@@ -6,6 +6,17 @@ function sanitizeRepeatType(raw) {
   return "none";
 }
 
+function sanitizeReminderTime(raw) {
+  const value = String(raw || "").trim();
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "09:00";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return "09:00";
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return "09:00";
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 function registerReminderHandlers(ipcMain, db) {
   const listStmt = db.prepare(
     `
@@ -14,9 +25,11 @@ function registerReminderHandlers(ipcMain, db) {
         r.title,
         r.description,
         r.reminder_date AS reminderDate,
+        r.reminder_time AS reminderTime,
         r.is_done AS isDone,
         r.repeat_type AS repeatType,
         r.repeat_until AS repeatUntil,
+        r.snooze_until AS snoozeUntil,
         r.project_id AS projectId,
         r.partner_id AS partnerId,
         p.title AS projectTitle,
@@ -36,9 +49,11 @@ function registerReminderHandlers(ipcMain, db) {
         title,
         description,
         reminder_date,
+        reminder_time,
         is_done,
         repeat_type,
         repeat_until,
+        snooze_until,
         project_id,
         partner_id,
         created_at,
@@ -48,9 +63,11 @@ function registerReminderHandlers(ipcMain, db) {
         @title,
         @description,
         @reminderDate,
+        @reminderTime,
         @isDone,
         @repeatType,
         @repeatUntil,
+        @snoozeUntil,
         @projectId,
         @partnerId,
         @createdAt,
@@ -65,9 +82,11 @@ function registerReminderHandlers(ipcMain, db) {
       SET title = @title,
           description = @description,
           reminder_date = @reminderDate,
+          reminder_time = @reminderTime,
           is_done = @isDone,
           repeat_type = @repeatType,
           repeat_until = @repeatUntil,
+          snooze_until = @snoozeUntil,
           project_id = @projectId,
           partner_id = @partnerId,
           updated_at = @updatedAt
@@ -79,6 +98,25 @@ function registerReminderHandlers(ipcMain, db) {
     `
       UPDATE reminders
       SET is_done = @isDone,
+          snooze_until = @snoozeUntil,
+          updated_at = @updatedAt
+      WHERE id = @id
+    `
+  );
+
+  const snoozeStmt = db.prepare(
+    `
+      UPDATE reminders
+      SET snooze_until = @snoozeUntil,
+          updated_at = @updatedAt
+      WHERE id = @id
+    `
+  );
+
+  const clearSnoozeStmt = db.prepare(
+    `
+      UPDATE reminders
+      SET snooze_until = '',
           updated_at = @updatedAt
       WHERE id = @id
     `
@@ -130,9 +168,11 @@ function registerReminderHandlers(ipcMain, db) {
       title: payload.title,
       description: payload.description || "",
       reminderDate: payload.reminderDate,
+      reminderTime: sanitizeReminderTime(payload.reminderTime),
       isDone: payload.isDone ? 1 : 0,
       repeatType: sanitizeRepeatType(payload.repeatType),
       repeatUntil: payload.repeatUntil || "",
+      snoozeUntil: payload.snoozeUntil || "",
       projectId: payload.projectId ? Number(payload.projectId) : null,
       partnerId: payload.partnerId ? Number(payload.partnerId) : null,
       createdAt: now,
@@ -147,9 +187,11 @@ function registerReminderHandlers(ipcMain, db) {
       title: payload.title,
       description: payload.description || "",
       reminderDate: payload.reminderDate,
+      reminderTime: sanitizeReminderTime(payload.reminderTime),
       isDone: payload.isDone ? 1 : 0,
       repeatType: sanitizeRepeatType(payload.repeatType),
       repeatUntil: payload.repeatUntil || "",
+      snoozeUntil: payload.snoozeUntil || "",
       projectId: payload.projectId ? Number(payload.projectId) : null,
       partnerId: payload.partnerId ? Number(payload.partnerId) : null,
       updatedAt: new Date().toISOString()
@@ -161,6 +203,26 @@ function registerReminderHandlers(ipcMain, db) {
     toggleDoneStmt.run({
       id: Number(payload.id),
       isDone: payload.isDone ? 1 : 0,
+      snoozeUntil: "",
+      updatedAt: new Date().toISOString()
+    });
+    return { ok: true };
+  });
+
+  ipcMain.handle("reminders:snooze", (_, payload) => {
+    const minutes = Math.max(1, Math.min(24 * 60, Number(payload.minutes || 30)));
+    const snoozeUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+    snoozeStmt.run({
+      id: Number(payload.id),
+      snoozeUntil,
+      updatedAt: new Date().toISOString()
+    });
+    return { ok: true, snoozeUntil };
+  });
+
+  ipcMain.handle("reminders:clear-snooze", (_, payload) => {
+    clearSnoozeStmt.run({
+      id: Number(payload.id),
       updatedAt: new Date().toISOString()
     });
     return { ok: true };
