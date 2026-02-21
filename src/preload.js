@@ -46,6 +46,7 @@ const invokeChannels = new Set([
   "system:backup:auto:run",
   "system:backup:create",
   "system:backup:restore",
+  "notifications:windows:show",
   "updater:check",
   "updater:download",
   "updater:install"

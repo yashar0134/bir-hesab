@@ -1,23 +1,61 @@
+function sanitizeRepeatType(raw) {
+  const value = String(raw || "none").toLowerCase();
+  if (value === "daily" || value === "weekly" || value === "monthly") {
+    return value;
+  }
+  return "none";
+}
+
 function registerReminderHandlers(ipcMain, db) {
   const listStmt = db.prepare(
     `
       SELECT
-        id,
-        title,
-        description,
-        reminder_date AS reminderDate,
-        is_done AS isDone,
-        created_at AS createdAt,
-        updated_at AS updatedAt
-      FROM reminders
-      ORDER BY reminder_date DESC, id DESC
+        r.id,
+        r.title,
+        r.description,
+        r.reminder_date AS reminderDate,
+        r.is_done AS isDone,
+        r.repeat_type AS repeatType,
+        r.repeat_until AS repeatUntil,
+        r.project_id AS projectId,
+        r.partner_id AS partnerId,
+        p.title AS projectTitle,
+        pa.full_name AS partnerName,
+        r.created_at AS createdAt,
+        r.updated_at AS updatedAt
+      FROM reminders r
+      LEFT JOIN projects p ON p.id = r.project_id
+      LEFT JOIN partners pa ON pa.id = r.partner_id
+      ORDER BY r.reminder_date DESC, r.id DESC
     `
   );
 
   const createStmt = db.prepare(
     `
-      INSERT INTO reminders (title, description, reminder_date, is_done, created_at, updated_at)
-      VALUES (@title, @description, @reminderDate, @isDone, @createdAt, @updatedAt)
+      INSERT INTO reminders (
+        title,
+        description,
+        reminder_date,
+        is_done,
+        repeat_type,
+        repeat_until,
+        project_id,
+        partner_id,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        @title,
+        @description,
+        @reminderDate,
+        @isDone,
+        @repeatType,
+        @repeatUntil,
+        @projectId,
+        @partnerId,
+        @createdAt,
+        @updatedAt
+      )
     `
   );
 
@@ -28,6 +66,10 @@ function registerReminderHandlers(ipcMain, db) {
           description = @description,
           reminder_date = @reminderDate,
           is_done = @isDone,
+          repeat_type = @repeatType,
+          repeat_until = @repeatUntil,
+          project_id = @projectId,
+          partner_id = @partnerId,
           updated_at = @updatedAt
       WHERE id = @id
     `
@@ -54,10 +96,29 @@ function registerReminderHandlers(ipcMain, db) {
         st.description,
         st.settlement_date AS settlementDate,
         st.project_id AS projectId,
-        p.title AS projectTitle
+        p.title AS projectTitle,
+        pa.full_name AS partnerName,
+        st.related_id AS relatedId
       FROM settlements st
       LEFT JOIN projects p ON p.id = st.project_id
+      LEFT JOIN partners pa ON pa.id = st.related_id
       ORDER BY st.settlement_date DESC, st.id DESC
+    `
+  );
+
+  const projectsStmt = db.prepare(
+    `
+      SELECT id, title
+      FROM projects
+      ORDER BY id DESC
+    `
+  );
+
+  const partnersStmt = db.prepare(
+    `
+      SELECT id, full_name AS fullName
+      FROM partners
+      ORDER BY id DESC
     `
   );
 
@@ -70,6 +131,10 @@ function registerReminderHandlers(ipcMain, db) {
       description: payload.description || "",
       reminderDate: payload.reminderDate,
       isDone: payload.isDone ? 1 : 0,
+      repeatType: sanitizeRepeatType(payload.repeatType),
+      repeatUntil: payload.repeatUntil || "",
+      projectId: payload.projectId ? Number(payload.projectId) : null,
+      partnerId: payload.partnerId ? Number(payload.partnerId) : null,
       createdAt: now,
       updatedAt: now
     });
@@ -83,6 +148,10 @@ function registerReminderHandlers(ipcMain, db) {
       description: payload.description || "",
       reminderDate: payload.reminderDate,
       isDone: payload.isDone ? 1 : 0,
+      repeatType: sanitizeRepeatType(payload.repeatType),
+      repeatUntil: payload.repeatUntil || "",
+      projectId: payload.projectId ? Number(payload.projectId) : null,
+      partnerId: payload.partnerId ? Number(payload.partnerId) : null,
       updatedAt: new Date().toISOString()
     });
     return { ok: true };
@@ -105,7 +174,9 @@ function registerReminderHandlers(ipcMain, db) {
   ipcMain.handle("reminders:calendar-data", () => {
     return {
       reminders: listStmt.all(),
-      settlements: settlementsStmt.all()
+      settlements: settlementsStmt.all(),
+      projects: projectsStmt.all(),
+      partners: partnersStmt.all()
     };
   });
 }

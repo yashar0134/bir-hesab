@@ -5,6 +5,8 @@ const state = {
   section: SIMPLE_UI_ENABLED ? SIMPLE_SECTION : "dashboard-birino"
 };
 
+let reminderNotificationsTimer = null;
+
 const sectionMap = {
   "dashboard-birino": "components/dashboard-birino.html",
   services: "components/services.html",
@@ -289,6 +291,73 @@ function jalaliMonthLabel(jy, jm) {
     "اسفند"
   ];
   return `${monthNames[jm - 1] || ""} ${toPersianDigits(jy)}`;
+}
+
+function jalaliDateToJdn(dateValue) {
+  const parsed = parseJalaliDate(dateValue);
+  if (!parsed) return null;
+  return j2d(parsed.jy, parsed.jm, parsed.jd);
+}
+
+function compareJalaliDates(a, b) {
+  const aJdn = jalaliDateToJdn(a);
+  const bJdn = jalaliDateToJdn(b);
+  if (aJdn === null || bJdn === null) return 0;
+  if (aJdn < bJdn) return -1;
+  if (aJdn > bJdn) return 1;
+  return 0;
+}
+
+function normalizeReminderRepeatType(value) {
+  const v = String(value || "none").toLowerCase();
+  if (v === "daily" || v === "weekly" || v === "monthly") return v;
+  return "none";
+}
+
+function getReminderPatternLabel(reminder) {
+  const repeatType = normalizeReminderRepeatType(reminder.repeatType);
+  if (repeatType === "daily") return "روزانه";
+  if (repeatType === "weekly") return "هفتگی";
+  if (repeatType === "monthly") return "ماهانه";
+  return "بدون تکرار";
+}
+
+function reminderOccursOnDate(reminder, targetDate) {
+  const start = parseJalaliDate(reminder.reminderDate);
+  const target = parseJalaliDate(targetDate);
+  if (!start || !target) return false;
+
+  const startJdn = j2d(start.jy, start.jm, start.jd);
+  const targetJdn = j2d(target.jy, target.jm, target.jd);
+  if (targetJdn < startJdn) return false;
+
+  const repeatType = normalizeReminderRepeatType(reminder.repeatType);
+  const repeatUntil = parseJalaliDate(reminder.repeatUntil || "");
+  if (repeatUntil) {
+    const untilJdn = j2d(repeatUntil.jy, repeatUntil.jm, repeatUntil.jd);
+    if (targetJdn > untilJdn) return false;
+  }
+
+  if (repeatType === "none") {
+    return targetJdn === startJdn;
+  }
+
+  if (repeatType === "daily") {
+    return true;
+  }
+
+  if (repeatType === "weekly") {
+    return (targetJdn - startJdn) % 7 === 0;
+  }
+
+  if (repeatType === "monthly") {
+    const monthsDiff = (target.jy - start.jy) * 12 + (target.jm - start.jm);
+    if (monthsDiff < 0) return false;
+    const expectedDay = Math.min(start.jd, jalaliMonthLength(target.jy, target.jm));
+    return target.jd === expectedDay;
+  }
+
+  return false;
 }
 
 function textMatch(query, ...fields) {
@@ -578,6 +647,10 @@ async function initRemindersSection() {
   const reminderTitleInput = document.getElementById("reminderTitle");
   const reminderDescInput = document.getElementById("reminderDescription");
   const reminderDoneInput = document.getElementById("reminderDone");
+  const reminderRepeatTypeInput = document.getElementById("reminderRepeatType");
+  const reminderRepeatUntilInput = document.getElementById("reminderRepeatUntil");
+  const reminderProjectInput = document.getElementById("reminderProject");
+  const reminderPartnerInput = document.getElementById("reminderPartner");
   const reminderFormReset = document.getElementById("reminderFormReset");
   const remindersRows = document.getElementById("remindersRows");
   const calendarGrid = document.getElementById("jalaliCalendarGrid");
@@ -585,6 +658,14 @@ async function initRemindersSection() {
   const prevMonthBtn = document.getElementById("calendarPrevMonth");
   const nextMonthBtn = document.getElementById("calendarNextMonth");
   const dayDetails = document.getElementById("calendarDayDetails");
+  const reminderInAppNotice = document.getElementById("reminderInAppNotice");
+
+  const filterShowReminders = document.getElementById("calendarFilterShowReminders");
+  const filterShowReceivables = document.getElementById("calendarFilterShowReceivables");
+  const filterShowPayables = document.getElementById("calendarFilterShowPayables");
+  const filterProject = document.getElementById("calendarFilterProject");
+  const filterPartner = document.getElementById("calendarFilterPartner");
+  const filterReminderStatus = document.getElementById("calendarFilterReminderStatus");
 
   const today = parseJalaliDate(getTodayJalaliDate()) || { jy: 1404, jm: 1, jd: 1 };
   let viewYear = today.jy;
@@ -593,93 +674,104 @@ async function initRemindersSection() {
   let editingReminderId = null;
   let reminders = [];
   let settlements = [];
+  let projects = [];
+  let partners = [];
 
   const normalizeReminderRows = (rows) =>
     (rows || []).map((row) => ({
       ...row,
       reminderDate: toCanonicalJalaliDate(row.reminderDate),
+      repeatType: normalizeReminderRepeatType(row.repeatType),
+      repeatUntil: row.repeatUntil ? toCanonicalJalaliDate(row.repeatUntil) : "",
+      projectId: row.projectId ? Number(row.projectId) : null,
+      partnerId: row.partnerId ? Number(row.partnerId) : null,
       isDone: Number(row.isDone || 0)
     }));
 
   const normalizeSettlementRows = (rows) =>
     (rows || []).map((row) => ({
       ...row,
+      settlementType: String(row.settlementType || ""),
       settlementDate: toCanonicalJalaliDate(row.settlementDate),
-      amount: Number(row.amount || 0)
+      amount: Number(row.amount || 0),
+      projectId: row.projectId ? Number(row.projectId) : null,
+      partnerId: row.relatedId ? Number(row.relatedId) : null
     }));
 
-  const buildDayMap = () => {
-    const map = new Map();
-    const ensure = (key) => {
-      if (!map.has(key)) {
-        map.set(key, {
-          reminders: [],
-          settlements: [],
-          receivable: 0,
-          payable: 0
-        });
-      }
-      return map.get(key);
-    };
-
-    reminders.forEach((item) => {
-      const key = toDateKey(item.reminderDate);
-      if (!key) return;
-      ensure(key).reminders.push(item);
-    });
-
-    settlements.forEach((item) => {
-      const key = toDateKey(item.settlementDate);
-      if (!key) return;
-      const bucket = ensure(key);
-      bucket.settlements.push(item);
-      if (item.settlementType === "client") {
-        bucket.receivable += Number(item.amount || 0);
-      } else {
-        bucket.payable += Number(item.amount || 0);
-      }
-    });
-
-    return map;
-  };
-
-  const renderDayDetails = (dayMap) => {
-    const key = toDateKey(selectedDate);
-    const bucket = dayMap.get(key);
-    if (!bucket) {
-      dayDetails.textContent = `برای تاریخ ${toPersianDigits(selectedDate)} موردی ثبت نشده است.`;
+  const renderNoticeBox = (dueToday) => {
+    if (!reminderInAppNotice) return;
+    if (!dueToday.length) {
+      reminderInAppNotice.classList.add("hidden");
+      reminderInAppNotice.innerHTML = "";
       return;
     }
-
-    const reminderLines = bucket.reminders
-      .map((item) => `• ${item.title}${item.isDone ? " (انجام‌شده)" : ""}`)
-      .join("<br>");
-    const settlementLines = bucket.settlements
+    const topItems = dueToday
+      .slice(0, 5)
       .map((item) => {
-        const typeLabel = item.settlementType === "client" ? "دریافتی" : "پرداختی";
-        const project = item.projectTitle ? ` - ${item.projectTitle}` : "";
-        return `• ${typeLabel}: ${formatCurrency(item.amount)}${project}`;
+        const projectLabel = item.projectTitle ? ` | پروژه: ${item.projectTitle}` : "";
+        const partnerLabel = item.partnerName ? ` | همکار: ${item.partnerName}` : "";
+        return `<li>${item.title}${projectLabel}${partnerLabel}</li>`;
       })
-      .join("<br>");
-
-    dayDetails.innerHTML = `
-      <strong>${toPersianDigits(selectedDate)}</strong><br>
-      ${bucket.reminders.length ? `<span>یادآورها:</span><br>${reminderLines}<br>` : ""}
-      ${bucket.settlements.length ? `<span>تراکنش‌ها:</span><br>${settlementLines}` : ""}
+      .join("");
+    reminderInAppNotice.classList.remove("hidden");
+    reminderInAppNotice.innerHTML = `
+      <strong>یادآورهای امروز (${toPersianDigits(dueToday.length)})</strong>
+      <ul>${topItems}</ul>
     `;
   };
 
-  const renderCalendar = () => {
-    const dayMap = buildDayMap();
-    monthTitle.textContent = jalaliMonthLabel(viewYear, viewMonth);
+  const populateSelect = (selectEl, items, valueField, labelField, placeholder) => {
+    if (!selectEl) return;
+    const prevValue = selectEl.value;
+    selectEl.innerHTML = `<option value="">${placeholder}</option>${items
+      .map((item) => `<option value="${item[valueField]}">${item[labelField]}</option>`)
+      .join("")}`;
+    if (prevValue && items.some((item) => String(item[valueField]) === String(prevValue))) {
+      selectEl.value = prevValue;
+    }
+  };
 
+  const renderLookupSelects = () => {
+    populateSelect(reminderProjectInput, projects, "id", "title", "بدون پروژه");
+    populateSelect(reminderPartnerInput, partners, "id", "fullName", "بدون همکار");
+    populateSelect(filterProject, projects, "id", "title", "همه پروژه‌ها");
+    populateSelect(filterPartner, partners, "id", "fullName", "همه همکاران");
+  };
+
+  const getFilters = () => ({
+    showReminders: filterShowReminders?.checked !== false,
+    showReceivables: filterShowReceivables?.checked !== false,
+    showPayables: filterShowPayables?.checked !== false,
+    projectId: filterProject?.value ? Number(filterProject.value) : null,
+    partnerId: filterPartner?.value ? Number(filterPartner.value) : null,
+    reminderStatus: filterReminderStatus?.value || "all"
+  });
+
+  const reminderMatchesFilters = (item, filters) => {
+    if (filters.projectId && Number(item.projectId || 0) !== filters.projectId) return false;
+    if (filters.partnerId && Number(item.partnerId || 0) !== filters.partnerId) return false;
+    if (filters.reminderStatus === "open" && item.isDone) return false;
+    if (filters.reminderStatus === "done" && !item.isDone) return false;
+    return true;
+  };
+
+  const settlementMatchesFilters = (item, filters) => {
+    if (filters.projectId && Number(item.projectId || 0) !== filters.projectId) return false;
+    if (filters.partnerId && Number(item.partnerId || 0) !== filters.partnerId) return false;
+
+    if (item.settlementType === "client") {
+      return filters.showReceivables;
+    }
+    return filters.showPayables;
+  };
+
+  const getVisibleCalendarCells = () => {
     const daysInMonth = jalaliMonthLength(viewYear, viewMonth);
     const firstWeekday = jalaliWeekdayIndex(viewYear, viewMonth, 1);
 
     const prevYear = viewMonth === 1 ? viewYear - 1 : viewYear;
     const prevMonth = viewMonth === 1 ? 12 : viewMonth - 1;
     const prevMonthDays = jalaliMonthLength(prevYear, prevMonth);
-
     const nextYear = viewMonth === 12 ? viewYear + 1 : viewYear;
     const nextMonth = viewMonth === 12 ? 1 : viewMonth + 1;
 
@@ -687,7 +779,7 @@ async function initRemindersSection() {
     for (let i = 0; i < 42; i += 1) {
       let jy = viewYear;
       let jm = viewMonth;
-      let jd = 0;
+      let jd;
       let inCurrentMonth = true;
 
       if (i < firstWeekday) {
@@ -704,34 +796,140 @@ async function initRemindersSection() {
         jd = i - firstWeekday + 1;
       }
 
-      const dateStr = formatJalaliDateParts(jy, jm, jd);
-      const key = toDateKey(dateStr);
-      const bucket = dayMap.get(key);
-      const reminderCount = bucket?.reminders?.length || 0;
-      const receivable = Number(bucket?.receivable || 0);
-      const payable = Number(bucket?.payable || 0);
-      const isSelected = selectedDate === dateStr;
+      cells.push({
+        jy,
+        jm,
+        jd,
+        inCurrentMonth,
+        dateStr: formatJalaliDateParts(jy, jm, jd)
+      });
+    }
+    return cells;
+  };
 
-      const chips = [];
-      if (reminderCount) {
-        chips.push(`<span class="day-chip reminder">یادآور ${toPersianDigits(reminderCount)}</span>`);
-      }
-      if (receivable > 0) {
-        chips.push(`<span class="day-chip receive">دریافتی ${toPersianDigits(Math.round(receivable).toLocaleString("en-US"))}</span>`);
-      }
-      if (payable > 0) {
-        chips.push(`<span class="day-chip pay">پرداختی ${toPersianDigits(Math.round(payable).toLocaleString("en-US"))}</span>`);
-      }
+  const buildDayMap = (visibleCells, filters) => {
+    const map = new Map();
+    visibleCells.forEach((cell) => {
+      map.set(toDateKey(cell.dateStr), {
+        reminders: [],
+        settlements: [],
+        receivable: 0,
+        payable: 0
+      });
+    });
 
-      cells.push(`
-        <div class="calendar-day ${inCurrentMonth ? "current" : "muted"} ${isSelected ? "selected" : ""}" data-date="${dateStr}">
-          <div class="calendar-day-head">${toPersianDigits(jd)}</div>
-          <div class="calendar-day-chips">${chips.join("")}</div>
-        </div>
-      `);
+    if (filters.showReminders) {
+      reminders.forEach((item) => {
+        if (!reminderMatchesFilters(item, filters)) return;
+        visibleCells.forEach((cell) => {
+          if (!reminderOccursOnDate(item, cell.dateStr)) return;
+          const bucket = map.get(toDateKey(cell.dateStr));
+          if (!bucket) return;
+          bucket.reminders.push(item);
+        });
+      });
     }
 
-    calendarGrid.innerHTML = cells.join("");
+    settlements.forEach((item) => {
+      if (!settlementMatchesFilters(item, filters)) return;
+      const key = toDateKey(item.settlementDate);
+      const bucket = map.get(key);
+      if (!bucket) return;
+      bucket.settlements.push(item);
+      if (item.settlementType === "client") {
+        bucket.receivable += Number(item.amount || 0);
+      } else {
+        bucket.payable += Number(item.amount || 0);
+      }
+    });
+
+    return map;
+  };
+
+  const renderDayDetails = (dayMap) => {
+    const key = toDateKey(selectedDate);
+    const bucket = dayMap.get(key);
+    if (!bucket || (!bucket.reminders.length && !bucket.settlements.length)) {
+      dayDetails.textContent = `برای تاریخ ${toPersianDigits(selectedDate)} موردی ثبت نشده است.`;
+      return;
+    }
+
+    const reminderLines = bucket.reminders
+      .map((item) => {
+        const repeatLabel = getReminderPatternLabel(item);
+        const relation = [
+          item.projectTitle ? `پروژه: ${item.projectTitle}` : "",
+          item.partnerName ? `همکار: ${item.partnerName}` : ""
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        return `• ${item.title}${item.isDone ? " (انجام‌شده)" : ""} | ${repeatLabel}${relation ? ` | ${relation}` : ""}`;
+      })
+      .join("<br>");
+
+    const settlementLines = bucket.settlements
+      .map((item) => {
+        const typeLabel = item.settlementType === "client" ? "دریافتی" : "پرداختی";
+        const project = item.projectTitle ? ` | پروژه: ${item.projectTitle}` : "";
+        const partner = item.partnerName ? ` | همکار: ${item.partnerName}` : "";
+        return `• ${typeLabel}: ${formatCurrency(item.amount)}${project}${partner}`;
+      })
+      .join("<br>");
+
+    dayDetails.innerHTML = `
+      <strong>${toPersianDigits(selectedDate)}</strong><br>
+      ${bucket.reminders.length ? `<span>یادآورها:</span><br>${reminderLines}<br>` : ""}
+      ${bucket.settlements.length ? `<span>تراکنش‌ها:</span><br>${settlementLines}` : ""}
+    `;
+  };
+
+  const renderCalendar = () => {
+    const filters = getFilters();
+    const visibleCells = getVisibleCalendarCells();
+    const dayMap = buildDayMap(visibleCells, filters);
+    monthTitle.textContent = jalaliMonthLabel(viewYear, viewMonth);
+
+    const html = visibleCells
+      .map((cell) => {
+        const bucket = dayMap.get(toDateKey(cell.dateStr));
+        const reminderCount = bucket?.reminders?.length || 0;
+        const receivable = Number(bucket?.receivable || 0);
+        const payable = Number(bucket?.payable || 0);
+        const isSelected = selectedDate === cell.dateStr;
+
+        const chips = [];
+        if (reminderCount) {
+          chips.push(
+            `<span class="day-chip reminder">یادآور ${toPersianDigits(reminderCount)}</span>`
+          );
+        }
+        if (receivable > 0) {
+          chips.push(
+            `<span class="day-chip receive">دریافتی ${toPersianDigits(
+              Math.round(receivable).toLocaleString("en-US")
+            )}</span>`
+          );
+        }
+        if (payable > 0) {
+          chips.push(
+            `<span class="day-chip pay">پرداختی ${toPersianDigits(
+              Math.round(payable).toLocaleString("en-US")
+            )}</span>`
+          );
+        }
+
+        return `
+          <div class="calendar-day ${cell.inCurrentMonth ? "current" : "muted"} ${
+            isSelected ? "selected" : ""
+          }" data-date="${cell.dateStr}">
+            <div class="calendar-day-head">${toPersianDigits(cell.jd)}</div>
+            <div class="calendar-day-chips">${chips.join("")}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    calendarGrid.innerHTML = html;
     renderDayDetails(dayMap);
   };
 
@@ -742,12 +940,19 @@ async function initRemindersSection() {
           <tr>
             <td>${item.title}</td>
             <td>${toPersianDigits(item.reminderDate)}</td>
+            <td>${getReminderPatternLabel(item)}${
+              item.repeatUntil ? ` تا ${toPersianDigits(item.repeatUntil)}` : ""
+            }</td>
+            <td>${item.projectTitle || "-"}</td>
+            <td>${item.partnerName || "-"}</td>
             <td>${item.isDone ? "انجام‌شده" : "باز"}</td>
             <td>${item.description || "-"}</td>
             <td>
               <div class="row-actions">
                 <button class="btn-ghost" type="button" data-action="edit" data-id="${item.id}">ویرایش</button>
-                <button class="btn-secondary" type="button" data-action="toggle" data-id="${item.id}">${item.isDone ? "بازکردن" : "انجام شد"}</button>
+                <button class="btn-secondary" type="button" data-action="toggle" data-id="${item.id}">${
+                  item.isDone ? "بازکردن" : "انجام شد"
+                }</button>
                 <button class="btn-danger" type="button" data-action="delete" data-id="${item.id}">حذف</button>
               </div>
             </td>
@@ -757,10 +962,22 @@ async function initRemindersSection() {
       .join("");
   };
 
+  const updateDueNotifications = async () => {
+    const todayStr = toCanonicalJalaliDate(getTodayJalaliDate());
+    const dueToday = reminders.filter(
+      (item) => !item.isDone && reminderOccursOnDate(item, todayStr)
+    );
+    renderNoticeBox(dueToday);
+  };
+
   const resetFormState = () => {
     editingReminderId = null;
     reminderForm.reset();
     reminderDoneInput.value = "0";
+    reminderRepeatTypeInput.value = "none";
+    reminderRepeatUntilInput.value = "";
+    reminderProjectInput.value = "";
+    reminderPartnerInput.value = "";
     reminderDateInput.value = selectedDate || getTodayJalaliDate();
   };
 
@@ -768,8 +985,13 @@ async function initRemindersSection() {
     const payload = await window.birHesab.invoke("reminders:calendar-data");
     reminders = normalizeReminderRows(payload?.reminders || []);
     settlements = normalizeSettlementRows(payload?.settlements || []);
+    projects = Array.isArray(payload?.projects) ? payload.projects : [];
+    partners = Array.isArray(payload?.partners) ? payload.partners : [];
+
+    renderLookupSelects();
     renderCalendar();
     renderRemindersTable();
+    await updateDueNotifications();
   };
 
   prevMonthBtn?.addEventListener("click", () => {
@@ -792,6 +1014,10 @@ async function initRemindersSection() {
     renderCalendar();
   });
 
+  [filterShowReminders, filterShowReceivables, filterShowPayables, filterProject, filterPartner, filterReminderStatus].forEach(
+    (el) => el?.addEventListener("input", renderCalendar)
+  );
+
   calendarGrid?.addEventListener("click", (event) => {
     const day = event.target.closest(".calendar-day");
     if (!day) return;
@@ -813,6 +1039,11 @@ async function initRemindersSection() {
       reminderDescInput.value = item.description || "";
       reminderDateInput.value = item.reminderDate || selectedDate;
       reminderDoneInput.value = item.isDone ? "1" : "0";
+      reminderRepeatTypeInput.value = normalizeReminderRepeatType(item.repeatType);
+      reminderRepeatUntilInput.value = item.repeatUntil || "";
+      reminderProjectInput.value = item.projectId || "";
+      reminderPartnerInput.value = item.partnerId || "";
+
       selectedDate = item.reminderDate || selectedDate;
       const parsed = parseJalaliDate(selectedDate);
       if (parsed) {
@@ -851,7 +1082,23 @@ async function initRemindersSection() {
 
     const reminderDate = toCanonicalJalaliDate(reminderDateInput.value);
     if (!parseJalaliDate(reminderDate)) {
-      alert("تاریخ ریمایندر معتبر نیست.");
+      alert("تاریخ شروع معتبر نیست.");
+      return;
+    }
+
+    const repeatType = normalizeReminderRepeatType(reminderRepeatTypeInput.value);
+    let repeatUntil = toCanonicalJalaliDate(reminderRepeatUntilInput.value || "");
+    if (repeatType === "none") {
+      repeatUntil = "";
+    }
+
+    if (repeatUntil && !parseJalaliDate(repeatUntil)) {
+      alert("تاریخ پایان تکرار معتبر نیست.");
+      return;
+    }
+
+    if (repeatUntil && compareJalaliDates(repeatUntil, reminderDate) < 0) {
+      alert("تاریخ پایان تکرار نباید قبل از تاریخ شروع باشد.");
       return;
     }
 
@@ -859,7 +1106,11 @@ async function initRemindersSection() {
       title: reminderTitleInput.value.trim(),
       description: reminderDescInput.value.trim(),
       reminderDate,
-      isDone: reminderDoneInput.value === "1"
+      isDone: reminderDoneInput.value === "1",
+      repeatType,
+      repeatUntil,
+      projectId: reminderProjectInput.value || null,
+      partnerId: reminderPartnerInput.value || null
     };
 
     if (!payload.title) {
@@ -1884,6 +2135,83 @@ function setupUpdaterEvents() {
   runCheck();
 }
 
+function renderGlobalReminderBanner(items) {
+  const banner = document.getElementById("globalReminderBanner");
+  if (!banner) return;
+  if (!items.length) {
+    banner.classList.add("hidden");
+    banner.textContent = "";
+    return;
+  }
+  const summary = items
+    .slice(0, 3)
+    .map((item) => item.title)
+    .join(" | ");
+  banner.classList.remove("hidden");
+  banner.textContent = `یادآورهای امروز: ${toPersianDigits(items.length)} مورد | ${summary}`;
+}
+
+async function runReminderNotificationCheck() {
+  const rawReminders = await window.birHesab.invoke("reminders:list");
+  const reminders = (rawReminders || []).map((row) => ({
+    ...row,
+    reminderDate: toCanonicalJalaliDate(row.reminderDate),
+    repeatType: normalizeReminderRepeatType(row.repeatType),
+    repeatUntil: row.repeatUntil ? toCanonicalJalaliDate(row.repeatUntil) : "",
+    isDone: Number(row.isDone || 0)
+  }));
+
+  const today = toCanonicalJalaliDate(getTodayJalaliDate());
+  const dueToday = reminders.filter(
+    (item) => !item.isDone && reminderOccursOnDate(item, today)
+  );
+
+  renderGlobalReminderBanner(dueToday);
+
+  const todayKey = toDateKey(today);
+  const fresh = dueToday.filter((item) => {
+    const key = `birhesab-global-notified-${item.id}-${todayKey}`;
+    return !localStorage.getItem(key);
+  });
+  if (!fresh.length) return;
+
+  const body = fresh
+    .slice(0, 4)
+    .map((item) => item.title)
+    .join(" | ");
+
+  try {
+    await window.birHesab.invoke("notifications:windows:show", {
+      title: `بیر حساب: ${toPersianDigits(fresh.length)} یادآور امروز`,
+      body: body || "یادآورهای جدید امروز"
+    });
+  } catch {
+    // Ignore transport errors; UI banner already informs user.
+  }
+
+  fresh.forEach((item) => {
+    const key = `birhesab-global-notified-${item.id}-${todayKey}`;
+    localStorage.setItem(key, new Date().toISOString());
+  });
+}
+
+function setupReminderNotifications() {
+  const run = async () => {
+    try {
+      await runReminderNotificationCheck();
+    } catch {
+      // Ignore reminders check failures to keep app boot resilient.
+    }
+  };
+
+  run();
+
+  if (reminderNotificationsTimer) {
+    clearInterval(reminderNotificationsTimer);
+  }
+  reminderNotificationsTimer = setInterval(run, 5 * 60 * 1000);
+}
+
 function setupHelpModal() {
   const openBtn = document.getElementById("openHelpBtn");
   const closeBtn = document.getElementById("closeHelpBtn");
@@ -1923,6 +2251,7 @@ async function bootstrap() {
   await renderSection();
   setupBackupEvents();
   setupUpdaterEvents();
+  setupReminderNotifications();
 }
 
 bootstrap().catch((error) => {

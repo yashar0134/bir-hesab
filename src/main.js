@@ -1,7 +1,7 @@
 ﻿const path = require("node:path");
 const fs = require("node:fs");
 const XLSX = require("xlsx");
-const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = require("electron");
 const { initializeDatabase } = require("./database/connection.js");
 const { registerServiceHandlers } = require("./modules/services.js");
 const { registerProjectHandlers } = require("./modules/projects.js");
@@ -347,6 +347,25 @@ function registerDataHandlers() {
     app.relaunch();
     app.exit(0);
     return { canceled: false, restarting: true };
+  });
+}
+
+function registerNotificationHandlers() {
+  ipcMain.handle("notifications:windows:show", (_, payload = {}) => {
+    const title = String(payload.title || "یادآور بیر حساب").slice(0, 120);
+    const body = String(payload.body || "").slice(0, 600);
+
+    if (!Notification.isSupported()) {
+      return { ok: true, sent: false };
+    }
+
+    const notice = new Notification({
+      title,
+      body,
+      silent: false
+    });
+    notice.show();
+    return { ok: true, sent: true };
   });
 }
 
@@ -828,6 +847,7 @@ app
     registerCashboxHandlers(ipcMain, db);
     registerReportHandlers();
     registerDataHandlers();
+    registerNotificationHandlers();
 
     createWindow();
     registerUpdaterHandlers(ipcMain, () => mainWindow, app);

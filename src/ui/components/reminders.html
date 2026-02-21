@@ -1,5 +1,34 @@
 <section class="section-card">
   <h2 class="section-title">تقویم شمسی و ریمایندرها</h2>
+
+  <div id="reminderInAppNotice" class="reminder-notice hidden"></div>
+
+  <div class="calendar-filter-grid">
+    <label class="check-item">
+      <input id="calendarFilterShowReminders" type="checkbox" checked />
+      نمایش ریمایندرها
+    </label>
+    <label class="check-item">
+      <input id="calendarFilterShowReceivables" type="checkbox" checked />
+      نمایش دریافتی‌ها
+    </label>
+    <label class="check-item">
+      <input id="calendarFilterShowPayables" type="checkbox" checked />
+      نمایش پرداختی‌ها
+    </label>
+    <select id="calendarFilterProject">
+      <option value="">همه پروژه‌ها</option>
+    </select>
+    <select id="calendarFilterPartner">
+      <option value="">همه همکاران</option>
+    </select>
+    <select id="calendarFilterReminderStatus">
+      <option value="all">همه وضعیت‌ها</option>
+      <option value="open">فقط باز</option>
+      <option value="done">فقط انجام‌شده</option>
+    </select>
+  </div>
+
   <div class="calendar-toolbar">
     <button id="calendarPrevMonth" class="btn-secondary" type="button">ماه قبل</button>
     <h3 id="calendarMonthTitle" class="calendar-month-title">-</h3>
@@ -28,7 +57,7 @@
   <form id="reminderForm">
     <div class="grid-3">
       <div>
-        <label for="reminderDate">تاریخ</label>
+        <label for="reminderDate">تاریخ شروع</label>
         <input
           id="reminderDate"
           type="text"
@@ -50,6 +79,38 @@
           <option value="1">انجام‌شده</option>
         </select>
       </div>
+      <div>
+        <label for="reminderRepeatType">تکرار</label>
+        <select id="reminderRepeatType">
+          <option value="none">بدون تکرار</option>
+          <option value="daily">روزانه</option>
+          <option value="weekly">هفتگی</option>
+          <option value="monthly">ماهانه</option>
+        </select>
+      </div>
+      <div>
+        <label for="reminderRepeatUntil">تکرار تا (اختیاری)</label>
+        <input
+          id="reminderRepeatUntil"
+          type="text"
+          data-jdp
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="1404/12/29"
+        />
+      </div>
+      <div>
+        <label for="reminderProject">پروژه مرتبط (اختیاری)</label>
+        <select id="reminderProject">
+          <option value="">بدون پروژه</option>
+        </select>
+      </div>
+      <div>
+        <label for="reminderPartner">همکار مرتبط (اختیاری)</label>
+        <select id="reminderPartner">
+          <option value="">بدون همکار</option>
+        </select>
+      </div>
     </div>
     <div>
       <label for="reminderDescription">توضیحات</label>
@@ -68,7 +129,10 @@
     <thead>
       <tr>
         <th>عنوان</th>
-        <th>تاریخ</th>
+        <th>تاریخ شروع</th>
+        <th>تکرار</th>
+        <th>پروژه</th>
+        <th>همکار</th>
         <th>وضعیت</th>
         <th>توضیحات</th>
         <th>عملیات</th>
