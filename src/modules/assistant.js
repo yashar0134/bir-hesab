@@ -2,14 +2,26 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const SETTINGS_FILE_NAME = "assistant-settings.json";
-const DEFAULT_MODEL = "gemini-2.0-flash-preview-02-05";
+const DEFAULT_MODEL = "gemini-2.5-flash";
 const LEGACY_MODEL_ALIASES = new Set([
+  "gemini-2.0-flash-preview-02-05",
+  "models/gemini-2.0-flash-preview-02-05",
   "gemini-2.0-flash",
   "models/gemini-2.0-flash"
 ]);
 const MAX_CHAT_MESSAGES = 24;
 const MAX_PENDING_ACTIONS = 20;
 const MAX_EXECUTION_ACTIONS = 30;
+const MODEL_RESOLUTION_MAX_PAGES = 6;
+
+const MODEL_PREFERENCE_ORDER = Object.freeze([
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-pro",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+  "gemini-1.5-pro"
+]);
 
 const SUPPORTED_ACTION_TYPES = new Set([
   "create_settlement",
@@ -651,11 +663,125 @@ ${JSON.stringify(context)}
 `.trim();
 }
 
+function normalizeModelId(value) {
+  return safeString(value)
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/^models\//i, "");
+}
+
+function buildGeminiRequestUrl(model, apiKey) {
+  const modelId = normalizeModelId(model);
+  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    modelId
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+}
+
+function buildGeminiApiError(statusCode, remoteMessage, fallbackMessage) {
+  const messageText = safeString(remoteMessage).trim();
+  const message = messageText
+    ? `Gemini API error (${statusCode}): ${messageText}`
+    : `Gemini API error (${statusCode})${fallbackMessage ? `: ${fallbackMessage}` : ""}`;
+  const err = new Error(message);
+  err.statusCode = Number(statusCode);
+  err.remoteMessage = messageText;
+  return err;
+}
+
+function isModelNotFoundError(error) {
+  const status = Number(error?.statusCode || 0);
+  if (status !== 404) return false;
+  const raw = `${safeString(error?.remoteMessage)} ${safeString(error?.message)}`.toLowerCase();
+  return (
+    raw.includes("not found") ||
+    raw.includes("not supported for generatecontent") ||
+    raw.includes("no longer available")
+  );
+}
+
+function modelSupportsGenerateContent(modelRow) {
+  const methods = Array.isArray(modelRow?.supportedGenerationMethods)
+    ? modelRow.supportedGenerationMethods
+    : [];
+  return methods.some((method) => safeString(method).toLowerCase() === "generatecontent");
+}
+
+function pickPreferredModel(modelIds, currentModel) {
+  const unique = Array.from(
+    new Set(
+      (modelIds || [])
+        .map((item) => normalizeModelId(item))
+        .filter(Boolean)
+    )
+  );
+  if (!unique.length) return "";
+
+  const current = normalizeModelId(currentModel).toLowerCase();
+  const exactCurrent = unique.find((id) => id.toLowerCase() === current);
+  if (exactCurrent) return exactCurrent;
+
+  for (const pref of MODEL_PREFERENCE_ORDER) {
+    const prefLower = pref.toLowerCase();
+    const exact = unique.find((id) => id.toLowerCase() === prefLower);
+    if (exact) return exact;
+    const withSuffix = unique.find((id) => id.toLowerCase().startsWith(`${prefLower}-`));
+    if (withSuffix) return withSuffix;
+  }
+
+  return unique[0];
+}
+
+async function listGeminiModels(apiKey) {
+  const all = [];
+  let pageToken = "";
+
+  for (let page = 0; page < MODEL_RESOLUTION_MAX_PAGES; page += 1) {
+    const url = new URL("https://generativelanguage.googleapis.com/v1beta/models");
+    url.searchParams.set("key", apiKey);
+    url.searchParams.set("pageSize", "100");
+    if (pageToken) {
+      url.searchParams.set("pageToken", pageToken);
+    }
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let remoteMessage = "";
+      try {
+        const parsed = JSON.parse(text);
+        remoteMessage = safeString(parsed?.error?.message).trim();
+      } catch {
+        remoteMessage = text.trim().slice(0, 300);
+      }
+      throw buildGeminiApiError(response.status, remoteMessage, "ListModels failed");
+    }
+
+    const json = await response.json();
+    const rows = Array.isArray(json?.models) ? json.models : [];
+    all.push(...rows);
+    pageToken = safeString(json?.nextPageToken).trim();
+    if (!pageToken) break;
+  }
+
+  return all;
+}
+
+async function resolveSupportedModel(apiKey, currentModel) {
+  const rows = await listGeminiModels(apiKey);
+  const supportedIds = rows
+    .filter((row) => modelSupportsGenerateContent(row))
+    .map((row) => row?.name);
+  return pickPreferredModel(supportedIds, currentModel);
+}
+
 async function callGemini({ apiKey, model, messages, context }) {
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      model
-    )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = buildGeminiRequestUrl(model, apiKey);
 
   const contents = toGeminiContents(messages);
   if (!contents.length) {
@@ -689,19 +815,16 @@ async function callGemini({ apiKey, model, messages, context }) {
 
     if (!response.ok) {
       const errText = await response.text();
-      let message = `Gemini API error (${response.status})`;
+      let remoteMessage = "";
       try {
         const parsed = JSON.parse(errText);
-        const remoteMessage = safeString(parsed?.error?.message).trim();
-        if (remoteMessage) {
-          message = `Gemini API error (${response.status}): ${remoteMessage}`;
-        }
+        remoteMessage = safeString(parsed?.error?.message).trim();
       } catch {
         if (errText.trim()) {
-          message = `Gemini API error (${response.status}): ${errText.trim().slice(0, 400)}`;
+          remoteMessage = errText.trim().slice(0, 400);
         }
       }
-      throw new Error(message);
+      throw buildGeminiApiError(response.status, remoteMessage, "");
     }
 
     const json = await response.json();
@@ -962,12 +1085,43 @@ function registerAssistantHandlers(ipcMain, db, electronApp) {
     }
 
     const context = buildContextSnapshot(statements);
-    const rawModelText = await callGemini({
-      apiKey: settings.apiKey,
-      model: settings.model,
-      messages,
-      context
-    });
+    let activeModel = sanitizeModel(settings.model);
+    let rawModelText = "";
+
+    try {
+      rawModelText = await callGemini({
+        apiKey: settings.apiKey,
+        model: activeModel,
+        messages,
+        context
+      });
+    } catch (error) {
+      if (!isModelNotFoundError(error)) {
+        throw error;
+      }
+
+      const fallbackModel = await resolveSupportedModel(settings.apiKey, activeModel);
+      if (!fallbackModel || fallbackModel.toLowerCase() === activeModel.toLowerCase()) {
+        throw error;
+      }
+
+      rawModelText = await callGemini({
+        apiKey: settings.apiKey,
+        model: fallbackModel,
+        messages,
+        context
+      });
+
+      activeModel = fallbackModel;
+      try {
+        saveSettings(electronApp, {
+          ...settings,
+          model: activeModel
+        });
+      } catch {
+        // Ignore settings write failures; chat already succeeded.
+      }
+    }
 
     const envelope = parseAssistantEnvelope(rawModelText);
     const pendingActions = normalizePendingActions(
@@ -983,7 +1137,8 @@ function registerAssistantHandlers(ipcMain, db, electronApp) {
 
     return {
       assistantReply,
-      pendingActions
+      pendingActions,
+      modelUsed: activeModel
     };
   });
 
