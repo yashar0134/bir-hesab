@@ -174,6 +174,15 @@ body.simple-ui .sidebar {
   padding: 10px;
 }
 
+.nav-block-assistant {
+  border-color: #c8d8ff;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(116, 224, 255, 0.28), transparent 45%),
+    radial-gradient(circle at 90% 30%, rgba(255, 202, 110, 0.25), transparent 42%),
+    linear-gradient(145deg, #f9fcff, #f4f8ff 58%, #fff9ee);
+  box-shadow: 0 8px 24px rgba(85, 123, 222, 0.14);
+}
+
 .nav-section-title {
   margin: 0 0 8px;
   font-size: 12px;
@@ -199,6 +208,30 @@ body.simple-ui .sidebar {
   font-size: 14px;
   font-weight: 700;
   transition: transform 0.16s ease, border-color 0.16s ease, background 0.2s ease;
+}
+
+.nav-btn-assistant {
+  border: 1px solid #aec5ff;
+  color: #1f2755;
+  background:
+    linear-gradient(120deg, #9dd4ff 0%, #d7c7ff 26%, #ffe0a8 52%, #9eeec8 78%, #9dd4ff 100%);
+  background-size: 220% 220%;
+  box-shadow: 0 8px 18px rgba(82, 119, 224, 0.2);
+  animation: aiGradientShift 8s linear infinite;
+}
+
+.nav-btn.nav-btn-assistant:hover {
+  transform: translateX(-2px) scale(1.01);
+  border-color: #8aacff;
+  box-shadow: 0 10px 24px rgba(82, 119, 224, 0.3);
+  background-position: 70% 50%;
+}
+
+.nav-btn.nav-btn-assistant.active {
+  color: #111a45;
+  border-color: #7f9dff;
+  box-shadow: 0 12px 26px rgba(71, 107, 214, 0.35);
+  background-position: 100% 50%;
 }
 
 .nav-btn:hover {
@@ -1276,6 +1309,36 @@ tbody tr:hover {
   margin-top: 10px;
 }
 
+.assistant-title-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #26306f;
+  background: linear-gradient(120deg, #a8daff, #d4c8ff, #ffe0ad);
+  border: 1px solid #b9c8f3;
+  vertical-align: middle;
+}
+
+.assistant-capabilities {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.assistant-capabilities span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2a3a6f;
+  background: linear-gradient(145deg, #eef4ff, #fff6ea);
+  border: 1px solid #d7e1f6;
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+
 .assistant-check-item {
   align-self: end;
 }
@@ -1293,6 +1356,10 @@ tbody tr:hover {
 .assistant-chat-shell {
   display: grid;
   gap: 10px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(121, 213, 255, 0.18), transparent 38%),
+    radial-gradient(circle at 93% 12%, rgba(255, 211, 122, 0.18), transparent 36%),
+    linear-gradient(180deg, #ffffff, #fbfdff 52%, #fffef9);
 }
 
 .assistant-quick-prompts {
@@ -1301,10 +1368,24 @@ tbody tr:hover {
   gap: 6px;
 }
 
+.assistant-quick-prompts .btn-secondary {
+  border-color: #cfdaf6;
+  background: linear-gradient(145deg, #f5f9ff, #fff8ef);
+  color: #2e396b;
+}
+
+.assistant-quick-prompts .btn-secondary:hover {
+  border-color: #afc1ee;
+  background: linear-gradient(145deg, #ebf4ff, #fff1da);
+}
+
 .assistant-chat-messages {
-  border: 1px solid var(--border);
+  border: 1px solid #cbd9f8;
   border-radius: 12px;
-  background: #fcfffd;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(190, 219, 255, 0.2), transparent 34%),
+    radial-gradient(circle at 0% 100%, rgba(255, 226, 170, 0.22), transparent 33%),
+    #fcfffd;
   min-height: 320px;
   max-height: 58vh;
   overflow: auto;
@@ -1326,16 +1407,16 @@ tbody tr:hover {
 
 .assistant-msg-assistant {
   justify-self: start;
-  background: #eef9ff;
-  border: 1px solid #cbeaf8;
-  color: #12465f;
+  background: linear-gradient(145deg, #e8f4ff, #f0f7ff 45%, #fff1d8);
+  border: 1px solid #bed8f8;
+  color: #1e3d5a;
 }
 
 .assistant-msg-user {
   justify-self: end;
-  background: #e9f9ef;
-  border: 1px solid #c5e9d3;
-  color: #145138;
+  background: linear-gradient(145deg, #eef8ff, #e8fff3 45%, #e8f8ff);
+  border: 1px solid #c4e4de;
+  color: #1d4f48;
 }
 
 .assistant-msg-system {
@@ -1346,8 +1427,8 @@ tbody tr:hover {
 }
 
 .assistant-pending {
-  border: 1px dashed #d4b27a;
-  background: #fffaf1;
+  border: 1px dashed #c6b6ff;
+  background: linear-gradient(135deg, #fbf8ff, #fff9f0);
   border-radius: 12px;
   padding: 10px;
   display: grid;
@@ -1362,9 +1443,9 @@ tbody tr:hover {
 }
 
 .assistant-chat-form {
-  border: 1px solid var(--border);
+  border: 1px solid #cbd9f8;
   border-radius: 12px;
-  background: #ffffff;
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
   padding: 10px;
   display: grid;
   gap: 8px;
@@ -1372,6 +1453,18 @@ tbody tr:hover {
 
 .assistant-chat-form textarea {
   min-height: 120px;
+}
+
+@keyframes aiGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 @media (max-width: 1100px) {
