@@ -48,6 +48,8 @@ const invokeChannels = new Set([
   "assistant:settings:update",
   "assistant:chat",
   "assistant:execute-actions",
+  "assistant:operations:list",
+  "assistant:operations:undo",
   "system:backup:settings:get",
   "system:backup:settings:update",
   "system:backup:auto:run",

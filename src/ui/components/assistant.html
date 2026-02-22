@@ -5,7 +5,7 @@
   </h2>
   <p class="list-note">
     با دستیار چت کنید تا تمام عملیات حسابداری را مثل یک کاربر انجام دهد، گزارش بدهد، محاسبات دقیق انجام
-    دهد و اگر داده‌ای ناقص بود سوال تکمیلی بپرسد.
+    دهد، نام و الگوی کاری شما را به‌مرور یاد بگیرد و اگر داده‌ای ناقص بود سوال تکمیلی بپرسد.
   </p>
 
   <div class="assistant-capabilities">
@@ -13,9 +13,15 @@
     <span>گزارش‌گیری و تحلیل</span>
     <span>SQL ایمن برای دسترسی عمیق</span>
     <span>ماشین‌حساب دقیق</span>
+    <span>حافظه کاربر و سابقه روزانه</span>
+    <span>مسلط به تقویم شمسی و رویدادها</span>
   </div>
 
   <div class="assistant-settings-grid">
+    <div>
+      <label for="assistantDisplayName">نام شما (برای شخصی‌سازی)</label>
+      <input id="assistantDisplayName" placeholder="مثلا یاشار" autocomplete="off" />
+    </div>
     <div>
       <label for="assistantApiKey">کلید API جمینای</label>
       <input id="assistantApiKey" type="password" placeholder="AIza..." autocomplete="off" />
@@ -41,6 +47,11 @@
     <button class="btn-secondary" type="button" data-prompt="امروز ۲,۵۰۰,۰۰۰ تومان بابت سفارش طراحی گرفتم. ثبت کن.">ثبت دریافتی</button>
     <button class="btn-secondary" type="button" data-prompt="امروز ۸۵۰,۰۰۰ تومان بابت سوپرمارکت پرداخت کردم. ثبت کن.">ثبت پرداختی عمومی</button>
     <button class="btn-secondary" type="button" data-prompt="خلاصه مالی این ماه را بهم گزارش بده.">گزارش این ماه</button>
+    <button class="btn-secondary" type="button" data-prompt="گزارش کسب‌وکار را مستقیم به Excel خروجی بگیر.">خروجی Excel گزارش</button>
+    <button class="btn-secondary" type="button" data-prompt="گزارش سود پروژه/همکار را مستقیم به PDF خروجی بگیر.">خروجی PDF سود پروژه</button>
+    <button class="btn-secondary" type="button" data-prompt="اسم من یاشار هست. از این به بعد یادت باشه.">حافظه نام کاربر</button>
+    <button class="btn-secondary" type="button" data-prompt="برای دیروز چه کارهایی انجام دادم؟">گزارش دیروز</button>
+    <button class="btn-secondary" type="button" data-prompt="رویدادها و وضعیت مالی روز ۱۴۰۵/۰۱/۰۱ رو بگو.">تقویم یک روز</button>
     <button class="btn-secondary" type="button" data-prompt="برای فردا ساعت ۹ یادآور پیگیری مطالبات ثبت کن.">ثبت یادآور</button>
     <button class="btn-secondary" type="button" data-prompt="یک خدمت جدید با نام تدوین حرفه‌ای و مدل پروژه‌ای بساز.">ثبت خدمت</button>
     <button class="btn-secondary" type="button" data-prompt="این عبارت را دقیق حساب کن: (1250000*3.5)-18%">ماشین‌حساب دقیق</button>
@@ -55,6 +66,14 @@
       <button id="assistantConfirmActionsBtn" class="btn-primary" type="button">تایید و اجرا</button>
       <button id="assistantCancelActionsBtn" class="btn-secondary" type="button">لغو عملیات</button>
     </div>
+  </div>
+
+  <div class="assistant-ops-shell">
+    <div class="assistant-ops-head">
+      <h3 class="section-title">لاگ عملیات دستیار</h3>
+      <button id="assistantRefreshOpsBtn" class="btn-secondary" type="button">بروزرسانی</button>
+    </div>
+    <ul id="assistantOperationsList" class="assistant-ops-list"></ul>
   </div>
 
   <form id="assistantChatForm" class="assistant-chat-form">

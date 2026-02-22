@@ -886,7 +886,7 @@ app
     registerReminderHandlers(ipcMain, db);
     registerExpenseHandlers(ipcMain, db);
     registerCashboxHandlers(ipcMain, db);
-    registerAssistantHandlers(ipcMain, db, app);
+    registerAssistantHandlers(ipcMain, db, app, () => mainWindow);
     registerReportHandlers();
     registerDataHandlers();
     registerCalendarEventHandlers();

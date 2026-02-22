@@ -1442,6 +1442,108 @@ tbody tr:hover {
   gap: 5px;
 }
 
+.assistant-ops-shell {
+  border: 1px solid #d4def7;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff, #fcfdff);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-ops-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.assistant-ops-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.assistant-op-item {
+  border: 1px solid #d5def4;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.assistant-op-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.assistant-op-summary {
+  color: #20335f;
+  font-weight: 700;
+}
+
+.assistant-op-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: #58627e;
+}
+
+.assistant-op-status {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.assistant-op-status-done {
+  color: #0b6d3f;
+  background: #ecfbf2;
+  border-color: #cdeedb;
+}
+
+.assistant-op-status-failed {
+  color: #9c2d2f;
+  background: #fff3f3;
+  border-color: #f4cecf;
+}
+
+.assistant-op-status-undo-failed {
+  color: #8b3f00;
+  background: #fff8ef;
+  border-color: #f2ddc1;
+}
+
+.assistant-op-status-undone {
+  color: #315d8b;
+  background: #f1f7ff;
+  border-color: #d1e2f8;
+}
+
+.assistant-op-error {
+  margin: 0;
+  color: #a94042;
+  font-size: 12px;
+}
+
+.assistant-op-empty {
+  border: 1px dashed #cfd8ee;
+  border-radius: 10px;
+  background: #fbfcff;
+  color: #5d6580;
+  padding: 10px;
+  text-align: center;
+}
+
 .assistant-chat-form {
   border: 1px solid #cbd9f8;
   border-radius: 12px;

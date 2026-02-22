@@ -1,5 +1,7 @@
 ﻿const fs = require("node:fs");
 const path = require("node:path");
+const XLSX = require("xlsx");
+const { BrowserWindow, dialog } = require("electron");
 
 const SETTINGS_FILE_NAME = "assistant-settings.json";
 const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -15,6 +17,11 @@ const MAX_EXECUTION_ACTIONS = 30;
 const MODEL_RESOLUTION_MAX_PAGES = 6;
 const MAX_SQL_ROWS = 120;
 const MAX_SQL_PREVIEW_ROWS = 8;
+const MAX_ASSISTANT_OPS_LIST = 120;
+const MAX_ASSISTANT_HISTORY_LOOKBACK = 420;
+const MAX_ASSISTANT_DAILY_MEMORY_DAYS = 21;
+const MAX_ASSISTANT_CHAT_MEMORY_ROWS = 1600;
+const MAX_ASSISTANT_CHAT_CONTEXT = 18;
 
 const MODEL_PREFERENCE_ORDER = Object.freeze([
   "gemini-2.5-flash",
@@ -54,6 +61,10 @@ const SUPPORTED_ACTION_TYPES = new Set([
   "create_reminder",
   "run_report_business",
   "run_report_project_profit",
+  "export_business_excel",
+  "export_business_pdf",
+  "export_project_profit_excel",
+  "export_project_profit_pdf",
   "run_sql",
   "calculate_expression"
 ]);
@@ -62,6 +73,10 @@ function normalizeDigits(value) {
   return String(value || "")
     .replace(/[Û°-Û¹]/g, (d) => String("Û°Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹".indexOf(d)))
     .replace(/[Ù -Ù©]/g, (d) => String("Ù Ù¡Ù¢Ù£Ù¤Ù¥Ù¦Ù§Ù¨Ù©".indexOf(d)));
+}
+
+function toPersianDigits(value) {
+  return normalizeDigits(value).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d) || 0]);
 }
 
 function safeString(value, fallback = "") {
@@ -114,6 +129,138 @@ function getTodayJalaliDate() {
   const m = parts.find((p) => p.type === "month")?.value;
   const d = parts.find((p) => p.type === "day")?.value;
   return `${y}/${m}/${d}`;
+}
+
+function formatToJalaliDate(dateValue) {
+  const parsed = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  const fmt = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Tehran"
+  });
+  const parts = fmt.formatToParts(parsed);
+  const y = parts.find((p) => p.type === "year")?.value;
+  const m = parts.find((p) => p.type === "month")?.value;
+  const d = parts.find((p) => p.type === "day")?.value;
+  if (!y || !m || !d) return "";
+  return `${y}/${m}/${d}`;
+}
+
+function getRelativeJalaliDate(dayOffset) {
+  const offset = Number(dayOffset || 0);
+  if (!Number.isFinite(offset)) return getTodayJalaliDate();
+  const date = new Date(Date.now() + Math.trunc(offset) * 24 * 60 * 60 * 1000);
+  return formatToJalaliDate(date) || getTodayJalaliDate();
+}
+
+function toIsoDateTime(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString();
+}
+
+function normalizeProfileDisplayName(value) {
+  return safeString(value)
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60);
+}
+
+function pickLatestUserMessage(messages) {
+  if (!Array.isArray(messages) || !messages.length) return "";
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const item = messages[i];
+    if (item?.role !== "user") continue;
+    const content = safeString(item?.content).trim();
+    if (content) return content;
+  }
+  return "";
+}
+
+function extractProfileNameFromText(rawText) {
+  const text = safeString(rawText)
+    .replace(/[,\.\!\?\u061F:؛]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+
+  const patterns = [
+    /(?:اسم(?:\s*من|م)?|نام(?:\s*من|م)?)\s*(?:هست|می(?:\s*)?باشد|:)?\s*([A-Za-z\u0600-\u06FF][A-Za-z0-9\u0600-\u06FF\s]{1,50})/i,
+    /(?:من)\s+([A-Za-z\u0600-\u06FF][A-Za-z0-9\u0600-\u06FF\s]{1,40})\s+(?:هستم|می(?:\s*)?باشم)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) continue;
+    let candidate = match[1].trim();
+    candidate = candidate.replace(
+      /\b(هستم|است|میباشد|می\s*باشد|جان|عزیز|میگن|صدا(?:م|م\s*کن))\b.*$/i,
+      ""
+    );
+    const normalized = normalizeProfileDisplayName(candidate);
+    if (normalized.length >= 2) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+function detectNameRecallIntent(rawText) {
+  const text = safeString(rawText).toLowerCase();
+  if (!text) return false;
+  return (
+    text.includes("اسم من") ||
+    text.includes("اسمم") ||
+    text.includes("نام من") ||
+    text.includes("من کی هستم") ||
+    text.includes("یادت هست من")
+  );
+}
+
+function detectHistoryIntent(rawText) {
+  const text = safeString(rawText);
+  if (!text) return false;
+  const hasTimeHint =
+    /دیروز|امروز|پریروز|فردا|پس\s*فردا|روزهای قبل|روز قبل|تاریخ|[1-9][0-9]{3}[\/-][0-9]{1,2}[\/-][0-9]{1,2}/.test(
+      text
+    );
+  const hasHistoryWord = /چه\s*کار|چی\s*کار|انجام\s*داد|عملیات|کارهایی|یادته|سوابق|گزارش\s*کار/.test(
+    text
+  );
+  const hasQuestionWord = /چه|چی|کدوم|گزارش|بگو|نشون|نمایش|یادته/.test(text);
+  const hasWriteIntent = /ثبت\s*کن|ایجاد\s*کن|اضافه\s*کن|حذف\s*کن|ویرایش\s*کن|تغییر\s*بده/.test(
+    text
+  );
+  return hasTimeHint && hasHistoryWord && hasQuestionWord && !hasWriteIntent;
+}
+
+function detectCalendarIntent(rawText) {
+  const text = safeString(rawText);
+  if (!text) return false;
+  const hasCalendarKeyword = /تقویم|رویداد|مناسبت|تعطیل|تعطیلات|calendar|event/i.test(text);
+  const hasWriteIntent = /ثبت\s*کن|ایجاد\s*کن|اضافه\s*کن|حذف\s*کن|ویرایش\s*کن|تغییر\s*بده/.test(
+    text
+  );
+  return hasCalendarKeyword && !hasWriteIntent;
+}
+
+function extractDateMention(rawText, fallbackDate = "") {
+  const text = normalizeDigits(rawText).replace(/-/g, "/");
+  const explicitMatch = text.match(/([1-9][0-9]{3}\/[0-9]{1,2}\/[0-9]{1,2})/);
+  if (explicitMatch?.[1]) {
+    return toCanonicalJalaliDate(explicitMatch[1], fallbackDate);
+  }
+  if (/پریروز/.test(text)) return getRelativeJalaliDate(-2);
+  if (/پس\s*فردا/.test(text)) return getRelativeJalaliDate(2);
+  if (/دیروز/.test(text)) return getRelativeJalaliDate(-1);
+  if (/فردا/.test(text)) return getRelativeJalaliDate(1);
+  if (/امروز/.test(text)) return getRelativeJalaliDate(0);
+  return fallbackDate || "";
 }
 
 function toCanonicalJalaliDate(value, fallback = "") {
@@ -300,11 +447,13 @@ function saveSettings(electronApp, nextSettings) {
   return normalized;
 }
 
-function toSettingsResponse(settings) {
+function toSettingsResponse(settings, profile = null) {
+  const profileView = profile && typeof profile === "object" ? profile : {};
   return {
     model: settings.model,
     hasApiKey: Boolean(settings.apiKey),
-    apiKeyMasked: settings.apiKey ? maskApiKey(settings.apiKey) : ""
+    apiKeyMasked: settings.apiKey ? maskApiKey(settings.apiKey) : "",
+    displayName: normalizeProfileDisplayName(profileView.displayName || "")
   };
 }
 
@@ -658,6 +807,18 @@ function buildActionSummary(type, payload) {
   if (type === "run_report_project_profit") {
     return "Run project profit report";
   }
+  if (type === "export_business_excel") {
+    return "Export business report to Excel";
+  }
+  if (type === "export_business_pdf") {
+    return "Export business report to PDF";
+  }
+  if (type === "export_project_profit_excel") {
+    return "Export project profit report to Excel";
+  }
+  if (type === "export_project_profit_pdf") {
+    return "Export project profit report to PDF";
+  }
   if (type === "run_sql") {
     return `Run SQL: ${(payload.sql || "").slice(0, 60)}`;
   }
@@ -712,6 +873,10 @@ function normalizeAction(rawAction, fallbackDate) {
     type === "run_sql" ||
     type === "run_report_business" ||
     type === "run_report_project_profit" ||
+    type === "export_business_excel" ||
+    type === "export_business_pdf" ||
+    type === "export_project_profit_excel" ||
+    type === "export_project_profit_pdf" ||
     type === "calculate_expression"
       ? "tool"
       : "write";
@@ -1104,9 +1269,12 @@ function executeUpsertPartnerTerm(action, statements) {
     createdAt: now,
     updatedAt: now
   });
+  const termRow = statements.partnerTermByPair.get(partner.id, projectId);
 
   return {
-    id: `${partner.id}/${projectId}`,
+    id: termRow?.id || `${partner.id}/${projectId}`,
+    partnerId: partner.id,
+    projectId,
     summary: buildActionSummary("upsert_partner_term", payload)
   };
 }
@@ -1445,13 +1613,397 @@ function executeDeleteCashbox(action, statements) {
   };
 }
 
+function getBusinessReportData(statements) {
+  const totalsRow = statements.reportBusinessTotals.get();
+  const monthly = statements.db
+    .prepare(
+      `
+        SELECT
+          substr(entry_date, 1, 7) AS monthKey,
+          SUM(CASE WHEN entry_type = 'in' THEN amount ELSE 0 END) AS income,
+          SUM(CASE WHEN entry_type = 'out' THEN amount ELSE 0 END) AS outcome
+        FROM cashbox
+        GROUP BY monthKey
+        ORDER BY monthKey DESC
+        LIMIT 12
+      `
+    )
+    .all();
+
+  const yearly = statements.db
+    .prepare(
+      `
+        SELECT
+          substr(entry_date, 1, 4) AS yearKey,
+          SUM(CASE WHEN entry_type = 'in' THEN amount ELSE 0 END) AS income,
+          SUM(CASE WHEN entry_type = 'out' THEN amount ELSE 0 END) AS outcome
+        FROM cashbox
+        GROUP BY yearKey
+        ORDER BY yearKey DESC
+      `
+    )
+    .all();
+
+  return {
+    totals: {
+      totalIncome: Number(totalsRow?.totalIncome || 0),
+      totalOutcome: Number(totalsRow?.totalOutcome || 0),
+      totalExpenses: Number(totalsRow?.totalExpenses || 0),
+      totalProjects: Number(totalsRow?.totalProjects || 0)
+    },
+    monthly: monthly.map((row) => ({
+      monthKey: row.monthKey,
+      income: Number(row.income || 0),
+      outcome: Number(row.outcome || 0)
+    })),
+    yearly: yearly.map((row) => ({
+      yearKey: row.yearKey,
+      income: Number(row.income || 0),
+      outcome: Number(row.outcome || 0)
+    }))
+  };
+}
+
+function getProjectProfitReportData(statements) {
+  const projects = statements.db
+    .prepare(
+      `
+        WITH client_by_project AS (
+          SELECT project_id, SUM(amount) AS clientReceived
+          FROM settlements
+          WHERE settlement_type = 'client'
+          GROUP BY project_id
+        ),
+        partner_paid_by_project AS (
+          SELECT project_id, SUM(amount) AS partnerPaid
+          FROM settlements
+          WHERE settlement_type = 'partner'
+          GROUP BY project_id
+        ),
+        terms_due_by_project AS (
+          SELECT
+            t.project_id AS projectId,
+            SUM(
+              CASE
+                WHEN t.payment_model = 'percent'
+                  THEN COALESCE(c.clientReceived, 0) * t.percent_value / 100.0
+                ELSE t.salary_amount
+              END
+            ) AS partnerDue
+          FROM partner_project_terms t
+          LEFT JOIN client_by_project c ON c.project_id = t.project_id
+          GROUP BY t.project_id
+        )
+        SELECT
+          p.id AS projectId,
+          p.title AS projectTitle,
+          p.client_name AS clientName,
+          p.status,
+          COALESCE(c.clientReceived, 0) AS clientReceived,
+          COALESCE(d.partnerDue, 0) AS partnerDue,
+          COALESCE(pp.partnerPaid, 0) AS partnerPaid,
+          COALESCE(d.partnerDue, 0) - COALESCE(pp.partnerPaid, 0) AS partnerRemaining,
+          COALESCE(c.clientReceived, 0) - COALESCE(d.partnerDue, 0) AS expectedNetProfit,
+          COALESCE(c.clientReceived, 0) - COALESCE(pp.partnerPaid, 0) AS realizedNetProfit
+        FROM projects p
+        LEFT JOIN client_by_project c ON c.project_id = p.id
+        LEFT JOIN terms_due_by_project d ON d.projectId = p.id
+        LEFT JOIN partner_paid_by_project pp ON pp.project_id = p.id
+        ORDER BY p.id DESC
+      `
+    )
+    .all();
+
+  const partners = statements.db
+    .prepare(
+      `
+        WITH client_by_project AS (
+          SELECT project_id, SUM(amount) AS clientReceived
+          FROM settlements
+          WHERE settlement_type = 'client'
+          GROUP BY project_id
+        ),
+        term_due_totals AS (
+          SELECT
+            t.partner_id AS partnerId,
+            COUNT(DISTINCT t.project_id) AS projectsCount,
+            SUM(
+              CASE
+                WHEN t.payment_model = 'percent'
+                  THEN COALESCE(c.clientReceived, 0) * t.percent_value / 100.0
+                ELSE t.salary_amount
+              END
+            ) AS dueAmount
+          FROM partner_project_terms t
+          LEFT JOIN client_by_project c ON c.project_id = t.project_id
+          GROUP BY t.partner_id
+        ),
+        partner_paid_totals AS (
+          SELECT related_id AS partnerId, SUM(amount) AS paidAmount
+          FROM settlements
+          WHERE settlement_type = 'partner' AND related_id IS NOT NULL
+          GROUP BY related_id
+        )
+        SELECT
+          p.id AS partnerId,
+          p.full_name AS partnerName,
+          COALESCE(td.projectsCount, 0) AS projectsCount,
+          COALESCE(td.dueAmount, 0) AS dueAmount,
+          COALESCE(pp.paidAmount, 0) AS paidAmount,
+          COALESCE(td.dueAmount, 0) - COALESCE(pp.paidAmount, 0) AS remainingAmount
+        FROM partners p
+        LEFT JOIN term_due_totals td ON td.partnerId = p.id
+        LEFT JOIN partner_paid_totals pp ON pp.partnerId = p.id
+        ORDER BY remainingAmount DESC, p.id DESC
+      `
+    )
+    .all();
+
+  const totals = {
+    totalClientReceived: 0,
+    totalPartnerDue: 0,
+    totalPartnerPaid: 0,
+    totalExpectedNetProfit: 0,
+    totalRealizedNetProfit: 0
+  };
+
+  projects.forEach((row) => {
+    totals.totalClientReceived += Number(row.clientReceived || 0);
+    totals.totalPartnerDue += Number(row.partnerDue || 0);
+    totals.totalPartnerPaid += Number(row.partnerPaid || 0);
+    totals.totalExpectedNetProfit += Number(row.expectedNetProfit || 0);
+    totals.totalRealizedNetProfit += Number(row.realizedNetProfit || 0);
+  });
+
+  return {
+    totals,
+    projects: projects.map((row) => ({
+      ...row,
+      clientReceived: Number(row.clientReceived || 0),
+      partnerDue: Number(row.partnerDue || 0),
+      partnerPaid: Number(row.partnerPaid || 0),
+      partnerRemaining: Number(row.partnerRemaining || 0),
+      expectedNetProfit: Number(row.expectedNetProfit || 0),
+      realizedNetProfit: Number(row.realizedNetProfit || 0)
+    })),
+    partners: partners.map((row) => ({
+      ...row,
+      projectsCount: Number(row.projectsCount || 0),
+      dueAmount: Number(row.dueAmount || 0),
+      paidAmount: Number(row.paidAmount || 0),
+      remainingAmount: Number(row.remainingAmount || 0)
+    }))
+  };
+}
+
+function toHiddenPrintWindowOptions() {
+  return {
+    show: false,
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  };
+}
+
+async function exportBusinessReportExcel(statements, getMainWindow) {
+  const report = getBusinessReportData(statements);
+  const saveResult = await dialog.showSaveDialog(getMainWindow?.() || null, {
+    title: "Save Business Report (Excel)",
+    defaultPath: "bir-hesab-business-report.xlsx",
+    filters: [{ name: "Excel", extensions: ["xlsx"] }]
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { canceled: true };
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const totalsRows = [
+    { Metric: "Total Income", Value: report.totals.totalIncome },
+    { Metric: "Total Outcome", Value: report.totals.totalOutcome },
+    { Metric: "Total Expenses", Value: report.totals.totalExpenses },
+    { Metric: "Total Projects", Value: report.totals.totalProjects }
+  ];
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(totalsRows), "Summary");
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(report.monthly),
+    "Monthly"
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(report.yearly),
+    "Yearly"
+  );
+  XLSX.writeFile(workbook, saveResult.filePath);
+
+  return { canceled: false, filePath: saveResult.filePath };
+}
+
+async function exportBusinessReportPdf(statements, getMainWindow) {
+  const report = getBusinessReportData(statements);
+  const saveResult = await dialog.showSaveDialog(getMainWindow?.() || null, {
+    title: "Save Business Report (PDF)",
+    defaultPath: "bir-hesab-business-report.pdf",
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { canceled: true };
+  }
+
+  const rowsToHtml = (rows, keys) =>
+    rows
+      .map((row) => `<tr>${keys.map((key) => `<td>${String(row[key] ?? "")}</td>`).join("")}</tr>`)
+      .join("");
+
+  const totalsRows = [
+    ["Total Income", report.totals.totalIncome],
+    ["Total Outcome", report.totals.totalOutcome],
+    ["Total Expenses", report.totals.totalExpenses],
+    ["Total Projects", report.totals.totalProjects]
+  ]
+    .map(([k, v]) => `<tr><td>${k}</td><td>${String(v)}</td></tr>`)
+    .join("");
+
+  const html = `<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  body { font-family: Tahoma, sans-serif; padding: 24px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+</style>
+</head>
+<body>
+<h2>Bir Hesab Business Report</h2>
+<h3>Summary</h3>
+<table><tbody>${totalsRows}</tbody></table>
+<h3>Monthly</h3>
+<table><thead><tr><th>monthKey</th><th>income</th><th>outcome</th></tr></thead><tbody>${rowsToHtml(report.monthly, ["monthKey", "income", "outcome"])}</tbody></table>
+<h3>Yearly</h3>
+<table><thead><tr><th>yearKey</th><th>income</th><th>outcome</th></tr></thead><tbody>${rowsToHtml(report.yearly, ["yearKey", "income", "outcome"])}</tbody></table>
+</body>
+</html>`;
+
+  const printWindow = new BrowserWindow(toHiddenPrintWindowOptions());
+  await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  const pdfBuffer = await printWindow.webContents.printToPDF({
+    printBackground: true,
+    preferCSSPageSize: true
+  });
+  fs.writeFileSync(saveResult.filePath, pdfBuffer);
+  printWindow.close();
+
+  return { canceled: false, filePath: saveResult.filePath };
+}
+
+async function exportProjectProfitReportExcel(statements, getMainWindow) {
+  const report = getProjectProfitReportData(statements);
+  const saveResult = await dialog.showSaveDialog(getMainWindow?.() || null, {
+    title: "Save Project Profit Report (Excel)",
+    defaultPath: "bir-hesab-project-profit-report.xlsx",
+    filters: [{ name: "Excel", extensions: ["xlsx"] }]
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { canceled: true };
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const totalsRows = [
+    { Metric: "Client Received", Value: report.totals.totalClientReceived },
+    { Metric: "Partner Due", Value: report.totals.totalPartnerDue },
+    { Metric: "Partner Paid", Value: report.totals.totalPartnerPaid },
+    { Metric: "Expected Net Profit", Value: report.totals.totalExpectedNetProfit },
+    { Metric: "Realized Net Profit", Value: report.totals.totalRealizedNetProfit }
+  ];
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(totalsRows), "Summary");
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(report.projects),
+    "Projects"
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(report.partners),
+    "Partners"
+  );
+
+  XLSX.writeFile(workbook, saveResult.filePath);
+  return { canceled: false, filePath: saveResult.filePath };
+}
+
+async function exportProjectProfitReportPdf(statements, getMainWindow) {
+  const report = getProjectProfitReportData(statements);
+  const saveResult = await dialog.showSaveDialog(getMainWindow?.() || null, {
+    title: "Save Project Profit Report (PDF)",
+    defaultPath: "bir-hesab-project-profit-report.pdf",
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { canceled: true };
+  }
+
+  const rowsToHtml = (rows, keys) =>
+    rows
+      .map((row) => `<tr>${keys.map((key) => `<td>${String(row[key] ?? "")}</td>`).join("")}</tr>`)
+      .join("");
+
+  const totalsRows = [
+    ["Client Received", report.totals.totalClientReceived],
+    ["Partner Due", report.totals.totalPartnerDue],
+    ["Partner Paid", report.totals.totalPartnerPaid],
+    ["Expected Net Profit", report.totals.totalExpectedNetProfit],
+    ["Realized Net Profit", report.totals.totalRealizedNetProfit]
+  ]
+    .map(([k, v]) => `<tr><td>${k}</td><td>${String(v)}</td></tr>`)
+    .join("");
+
+  const html = `<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  body { font-family: Tahoma, sans-serif; padding: 24px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+</style>
+</head>
+<body>
+<h2>Bir Hesab Project Profit Report</h2>
+<h3>Summary</h3>
+<table><tbody>${totalsRows}</tbody></table>
+<h3>Projects</h3>
+<table><thead><tr><th>projectTitle</th><th>clientName</th><th>clientReceived</th><th>partnerDue</th><th>partnerPaid</th><th>expectedNetProfit</th><th>realizedNetProfit</th></tr></thead><tbody>${rowsToHtml(report.projects, ["projectTitle", "clientName", "clientReceived", "partnerDue", "partnerPaid", "expectedNetProfit", "realizedNetProfit"])}</tbody></table>
+<h3>Partners</h3>
+<table><thead><tr><th>partnerName</th><th>projectsCount</th><th>dueAmount</th><th>paidAmount</th><th>remainingAmount</th></tr></thead><tbody>${rowsToHtml(report.partners, ["partnerName", "projectsCount", "dueAmount", "paidAmount", "remainingAmount"])}</tbody></table>
+</body>
+</html>`;
+
+  const printWindow = new BrowserWindow(toHiddenPrintWindowOptions());
+  await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  const pdfBuffer = await printWindow.webContents.printToPDF({
+    printBackground: true,
+    preferCSSPageSize: true
+  });
+  fs.writeFileSync(saveResult.filePath, pdfBuffer);
+  printWindow.close();
+
+  return { canceled: false, filePath: saveResult.filePath };
+}
+
 function executeRunBusinessReport(action, statements) {
-  const totals = statements.reportBusinessTotals.get();
+  const report = getBusinessReportData(statements);
   const summary = [
-    `Income: ${Number(totals.totalIncome || 0)}`,
-    `Outcome: ${Number(totals.totalOutcome || 0)}`,
-    `Expenses: ${Number(totals.totalExpenses || 0)}`,
-    `Projects: ${Number(totals.totalProjects || 0)}`
+    `Income: ${Number(report.totals.totalIncome || 0)}`,
+    `Outcome: ${Number(report.totals.totalOutcome || 0)}`,
+    `Expenses: ${Number(report.totals.totalExpenses || 0)}`,
+    `Projects: ${Number(report.totals.totalProjects || 0)}`
   ].join(" | ");
 
   return {
@@ -1461,18 +2013,74 @@ function executeRunBusinessReport(action, statements) {
 }
 
 function executeRunProjectProfitReport(action, statements) {
-  const totals = statements.reportProjectProfitTotals.get();
+  const report = getProjectProfitReportData(statements);
   const summary = [
-    `Client received: ${Number(totals.totalClientReceived || 0)}`,
-    `Partner due: ${Number(totals.totalPartnerDue || 0)}`,
-    `Partner paid: ${Number(totals.totalPartnerPaid || 0)}`,
-    `Expected net: ${Number(totals.totalExpectedNetProfit || 0)}`,
-    `Realized net: ${Number(totals.totalRealizedNetProfit || 0)}`
+    `Client received: ${Number(report.totals.totalClientReceived || 0)}`,
+    `Partner due: ${Number(report.totals.totalPartnerDue || 0)}`,
+    `Partner paid: ${Number(report.totals.totalPartnerPaid || 0)}`,
+    `Expected net: ${Number(report.totals.totalExpectedNetProfit || 0)}`,
+    `Realized net: ${Number(report.totals.totalRealizedNetProfit || 0)}`
   ].join(" | ");
 
   return {
     id: "report-project-profit",
     summary: `Project profit report => ${summary}`
+  };
+}
+
+async function executeExportBusinessExcel(action, statements, runtime) {
+  const result = await exportBusinessReportExcel(statements, runtime?.getMainWindow);
+  if (result.canceled) {
+    return {
+      id: "export-business-excel",
+      summary: "Excel export cancelled."
+    };
+  }
+  return {
+    id: "export-business-excel",
+    summary: `Business Excel exported: ${result.filePath}`
+  };
+}
+
+async function executeExportBusinessPdf(action, statements, runtime) {
+  const result = await exportBusinessReportPdf(statements, runtime?.getMainWindow);
+  if (result.canceled) {
+    return {
+      id: "export-business-pdf",
+      summary: "PDF export cancelled."
+    };
+  }
+  return {
+    id: "export-business-pdf",
+    summary: `Business PDF exported: ${result.filePath}`
+  };
+}
+
+async function executeExportProjectProfitExcel(action, statements, runtime) {
+  const result = await exportProjectProfitReportExcel(statements, runtime?.getMainWindow);
+  if (result.canceled) {
+    return {
+      id: "export-project-profit-excel",
+      summary: "Excel export cancelled."
+    };
+  }
+  return {
+    id: "export-project-profit-excel",
+    summary: `Project profit Excel exported: ${result.filePath}`
+  };
+}
+
+async function executeExportProjectProfitPdf(action, statements, runtime) {
+  const result = await exportProjectProfitReportPdf(statements, runtime?.getMainWindow);
+  if (result.canceled) {
+    return {
+      id: "export-project-profit-pdf",
+      summary: "PDF export cancelled."
+    };
+  }
+  return {
+    id: "export-project-profit-pdf",
+    summary: `Project profit PDF exported: ${result.filePath}`
   };
 }
 
@@ -1598,7 +2206,7 @@ function executeCalculateExpression(action) {
   };
 }
 
-function executeWriteAction(action, statements) {
+async function executeWriteAction(action, statements, runtime = {}) {
   if (action.type === "create_service") return executeCreateService(action, statements);
   if (action.type === "update_service") return executeUpdateService(action, statements);
   if (action.type === "delete_service") return executeDeleteService(action, statements);
@@ -1635,6 +2243,18 @@ function executeWriteAction(action, statements) {
 
   if (action.type === "run_report_business") return executeRunBusinessReport(action, statements);
   if (action.type === "run_report_project_profit") return executeRunProjectProfitReport(action, statements);
+  if (action.type === "export_business_excel") {
+    return executeExportBusinessExcel(action, statements, runtime);
+  }
+  if (action.type === "export_business_pdf") {
+    return executeExportBusinessPdf(action, statements, runtime);
+  }
+  if (action.type === "export_project_profit_excel") {
+    return executeExportProjectProfitExcel(action, statements, runtime);
+  }
+  if (action.type === "export_project_profit_pdf") {
+    return executeExportProjectProfitPdf(action, statements, runtime);
+  }
 
   if (action.type === "run_sql") return executeRunSql(action, statements);
   if (action.type === "calculate_expression") return executeCalculateExpression(action, statements);
@@ -1642,7 +2262,12 @@ function executeWriteAction(action, statements) {
   throw new Error("Unsupported action type.");
 }
 
-function buildContextSnapshot(statements) {
+function buildContextSnapshot(
+  statements,
+  userBehavior = null,
+  userMemory = null,
+  calendarInsight = null
+) {
   const today = getTodayJalaliDate();
   const totals = statements.overviewTotals.get();
   return {
@@ -1727,6 +2352,29 @@ function buildContextSnapshot(statements) {
     assistantCapabilities: {
       canAskClarifyingQuestions: true,
       actionTypes: Array.from(SUPPORTED_ACTION_TYPES)
+    },
+    userMemory:
+      userMemory ||
+      {
+        profile: { displayName: "", preferences: {}, updatedAt: "" },
+        dailyActivity: [],
+        recentChats: []
+      },
+    calendarInsight:
+      calendarInsight ||
+      {
+        source: "",
+        generatedAt: "",
+        range: {},
+        today: { date: today, isHoliday: false, events: [] },
+        yesterday: { date: "", isHoliday: false, events: [] },
+        tomorrow: { date: "", isHoliday: false, events: [] }
+      },
+    userBehavior: userBehavior || {
+      totalLoggedActions: 0,
+      topActionTypes: [],
+      preferredReminderTime: "",
+      lastOperationAt: ""
     }
   };
 }
@@ -1758,8 +2406,13 @@ Rules:
 - Time format must be 24h HH:mm.
 - Counterparty in settlement can be any person/entity (not only employer/partner).
 - For reminders, prefer asking follow-up if date/time is missing.
+- Use userBehavior hints from context to align with user's common workflows and preferred reminder time.
+- Use userMemory.profile.displayName when available to personalize replies.
+- If user asks about yesterday/previous days, rely on userMemory.dailyActivity and context data.
+- If user asks about Jalali calendar events/holidays, use calendarInsight first.
 - For calculations requiring high precision, use action type calculate_expression.
 - For complex DB access, use run_sql action with a single safe SQL statement.
+- For requests to export reports, create the corresponding export_* action in pendingActions.
 - Never generate action types outside the supported list.
 
 Supported action types:
@@ -1772,6 +2425,8 @@ create_reminder, update_reminder, toggle_reminder_done, snooze_reminder, clear_r
 create_expense, update_expense, delete_expense
 create_cashbox, update_cashbox, delete_cashbox
 run_report_business, run_report_project_profit
+export_business_excel, export_business_pdf
+export_project_profit_excel, export_project_profit_pdf
 run_sql, calculate_expression
 
 Live app context JSON:
@@ -2267,7 +2922,15 @@ function createDbStatements(db) {
 
     serviceById: db.prepare(
       `
-        SELECT id, name, pricing_model AS pricingModel, rate, currency, description, is_active AS isActive
+        SELECT
+          id,
+          name,
+          pricing_model AS pricingModel,
+          rate,
+          currency,
+          description,
+          is_active AS isActive,
+          created_at AS createdAt
         FROM services
         WHERE id = ?
         LIMIT 1
@@ -2281,7 +2944,15 @@ function createDbStatements(db) {
     projectById: db.prepare("SELECT id, title FROM projects WHERE id = ? LIMIT 1"),
     projectByIdDetail: db.prepare(
       `
-        SELECT id, title, client_name AS clientName, status, start_date AS startDate, end_date AS endDate, notes
+        SELECT
+          id,
+          title,
+          client_name AS clientName,
+          status,
+          start_date AS startDate,
+          end_date AS endDate,
+          notes,
+          created_at AS createdAt
         FROM projects
         WHERE id = ?
         LIMIT 1
@@ -2306,7 +2977,8 @@ function createDbStatements(db) {
           payment_model AS paymentModel,
           salary_period AS salaryPeriod,
           salary_amount AS salaryAmount,
-          is_active AS isActive
+          is_active AS isActive,
+          created_at AS createdAt
         FROM partners
         WHERE id = ?
         LIMIT 1
@@ -2320,10 +2992,39 @@ function createDbStatements(db) {
     ),
 
     partnerTermById: db.prepare(
-      "SELECT id, partner_id AS partnerId, project_id AS projectId FROM partner_project_terms WHERE id = ? LIMIT 1"
+      `
+        SELECT
+          id,
+          partner_id AS partnerId,
+          project_id AS projectId,
+          payment_model AS paymentModel,
+          percent_value AS percentValue,
+          salary_amount AS salaryAmount,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM partner_project_terms
+        WHERE id = ?
+        LIMIT 1
+      `
     ),
     partnerTermByPair: db.prepare(
       "SELECT id FROM partner_project_terms WHERE partner_id = ? AND project_id = ? LIMIT 1"
+    ),
+    partnerTermsByPartner: db.prepare(
+      `
+        SELECT
+          id,
+          partner_id AS partnerId,
+          project_id AS projectId,
+          payment_model AS paymentModel,
+          percent_value AS percentValue,
+          salary_amount AS salaryAmount,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM partner_project_terms
+        WHERE partner_id = ?
+        ORDER BY id ASC
+      `
     ),
 
     settlementById: db.prepare(
@@ -2337,7 +3038,8 @@ function createDbStatements(db) {
           amount,
           payment_method AS paymentMethod,
           description,
-          settlement_date AS settlementDate
+          settlement_date AS settlementDate,
+          created_at AS createdAt
         FROM settlements
         WHERE id = ?
         LIMIT 1
@@ -2357,7 +3059,9 @@ function createDbStatements(db) {
           repeat_until AS repeatUntil,
           snooze_until AS snoozeUntil,
           project_id AS projectId,
-          partner_id AS partnerId
+          partner_id AS partnerId,
+          created_at AS createdAt,
+          updated_at AS updatedAt
         FROM reminders
         WHERE id = ?
         LIMIT 1
@@ -2375,7 +3079,15 @@ function createDbStatements(db) {
 
     expenseById: db.prepare(
       `
-        SELECT id, scope, paid_by AS paidBy, category, amount, expense_date AS expenseDate, description
+        SELECT
+          id,
+          scope,
+          paid_by AS paidBy,
+          category,
+          amount,
+          expense_date AS expenseDate,
+          description,
+          created_at AS createdAt
         FROM expenses
         WHERE id = ?
         LIMIT 1
@@ -2391,7 +3103,8 @@ function createDbStatements(db) {
           reference_type AS referenceType,
           reference_id AS referenceId,
           entry_date AS entryDate,
-          description
+          description,
+          created_at AS createdAt
         FROM cashbox
         WHERE id = ?
         LIMIT 1
@@ -2555,11 +3268,1358 @@ function createDbStatements(db) {
         ORDER BY id DESC
         LIMIT 25
       `
+    ),
+    reminderStatsByDate: db.prepare(
+      `
+        SELECT
+          COUNT(*) AS total,
+          COALESCE(SUM(CASE WHEN is_done = 0 THEN 1 ELSE 0 END), 0) AS openCount
+        FROM reminders
+        WHERE reminder_date IN (?, ?)
+      `
+    ),
+    settlementTotalsByDate: db.prepare(
+      `
+        SELECT
+          COALESCE(SUM(CASE WHEN settlement_type = 'client' THEN amount ELSE 0 END), 0) AS clientReceived,
+          COALESCE(SUM(CASE WHEN settlement_type = 'partner' THEN amount ELSE 0 END), 0) AS partnerPaid,
+          COALESCE(SUM(CASE WHEN settlement_type = 'personal' THEN amount ELSE 0 END), 0) AS personalAmount
+        FROM settlements
+        WHERE settlement_date IN (?, ?)
+      `
+    ),
+    cashboxTotalsByDate: db.prepare(
+      `
+        SELECT
+          COALESCE(SUM(CASE WHEN entry_type = 'in' THEN amount ELSE 0 END), 0) AS cashIn,
+          COALESCE(SUM(CASE WHEN entry_type = 'out' THEN amount ELSE 0 END), 0) AS cashOut
+        FROM cashbox
+        WHERE entry_date IN (?, ?)
+      `
+    ),
+    expenseTotalByDate: db.prepare(
+      `
+        SELECT
+          COALESCE(SUM(amount), 0) AS expenseTotal
+        FROM expenses
+        WHERE expense_date IN (?, ?)
+      `
     )
   };
 }
 
-function executeActions(actions, statements) {
+function jsonStringifySafe(value, fallback = "{}") {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function jsonParseSafe(value, fallback = null) {
+  try {
+    return JSON.parse(String(value || ""));
+  } catch {
+    return fallback;
+  }
+}
+
+function ensureAssistantMemoryTables(db) {
+  db.prepare(
+    `
+      CREATE TABLE IF NOT EXISTS assistant_user_profile (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        display_name TEXT NOT NULL DEFAULT '',
+        preferences_json TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL DEFAULT ''
+      )
+    `
+  ).run();
+
+  db.prepare(
+    `
+      CREATE TABLE IF NOT EXISTS assistant_chat_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `
+  ).run();
+
+  db.prepare(
+    `
+      CREATE INDEX IF NOT EXISTS idx_assistant_chat_logs_created_at
+      ON assistant_chat_logs(created_at DESC)
+    `
+  ).run();
+}
+
+function toProfileView(row) {
+  const preferences = jsonParseSafe(row?.preferencesJson, {});
+  return {
+    displayName: normalizeProfileDisplayName(row?.displayName || ""),
+    preferences: preferences && typeof preferences === "object" ? preferences : {},
+    updatedAt: row?.updatedAt || ""
+  };
+}
+
+function createAssistantMemoryStore(db) {
+  ensureAssistantMemoryTables(db);
+
+  const store = {
+    getProfile: db.prepare(
+      `
+        SELECT
+          display_name AS displayName,
+          preferences_json AS preferencesJson,
+          updated_at AS updatedAt
+        FROM assistant_user_profile
+        WHERE id = 1
+        LIMIT 1
+      `
+    ),
+    upsertProfile: db.prepare(
+      `
+        INSERT INTO assistant_user_profile (
+          id,
+          display_name,
+          preferences_json,
+          updated_at
+        ) VALUES (
+          1,
+          @displayName,
+          @preferencesJson,
+          @updatedAt
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          display_name = excluded.display_name,
+          preferences_json = excluded.preferences_json,
+          updated_at = excluded.updated_at
+      `
+    ),
+    appendChat: db.prepare(
+      `
+        INSERT INTO assistant_chat_logs (
+          role,
+          content,
+          created_at
+        ) VALUES (
+          @role,
+          @content,
+          @createdAt
+        )
+      `
+    ),
+    listRecentChats: db.prepare(
+      `
+        SELECT
+          id,
+          role,
+          content,
+          created_at AS createdAt
+        FROM assistant_chat_logs
+        ORDER BY id DESC
+        LIMIT ?
+      `
+    ),
+    pruneChats: db.prepare(
+      `
+        DELETE FROM assistant_chat_logs
+        WHERE id NOT IN (
+          SELECT id
+          FROM assistant_chat_logs
+          ORDER BY id DESC
+          LIMIT ?
+        )
+      `
+    )
+  };
+
+  return {
+    readProfile() {
+      return toProfileView(store.getProfile.get());
+    },
+    updateProfile(nextProfile = {}) {
+      const current = this.readProfile();
+      const updated = {
+        displayName:
+          nextProfile.displayName !== undefined
+            ? normalizeProfileDisplayName(nextProfile.displayName)
+            : current.displayName,
+        preferences:
+          nextProfile.preferences && typeof nextProfile.preferences === "object"
+            ? nextProfile.preferences
+            : current.preferences,
+        updatedAt: new Date().toISOString()
+      };
+      store.upsertProfile.run({
+        displayName: updated.displayName,
+        preferencesJson: jsonStringifySafe(updated.preferences, "{}"),
+        updatedAt: updated.updatedAt
+      });
+      return this.readProfile();
+    },
+    appendChat(role, content, createdAt = new Date().toISOString()) {
+      const safeRole = role === "assistant" ? "assistant" : "user";
+      const safeContent = safeString(content).trim();
+      if (!safeContent) return;
+      store.appendChat.run({
+        role: safeRole,
+        content: safeContent.slice(0, 4000),
+        createdAt: toIsoDateTime(createdAt) || new Date().toISOString()
+      });
+      store.pruneChats.run(MAX_ASSISTANT_CHAT_MEMORY_ROWS);
+    },
+    recentChats(limit = MAX_ASSISTANT_CHAT_CONTEXT) {
+      const safeLimit = Math.max(1, Math.min(80, Number(limit || 0) || MAX_ASSISTANT_CHAT_CONTEXT));
+      return store
+        .listRecentChats.all(safeLimit)
+        .map((row) => ({
+          id: Number(row.id || 0),
+          role: row.role === "assistant" ? "assistant" : "user",
+          content: safeString(row.content || ""),
+          createdAt: row.createdAt || ""
+        }))
+        .reverse();
+    }
+  };
+}
+
+function ensureAssistantOperationTable(db) {
+  db.prepare(
+    `
+      CREATE TABLE IF NOT EXISTS assistant_operation_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_type TEXT NOT NULL,
+        action_kind TEXT NOT NULL DEFAULT 'write',
+        action_summary TEXT NOT NULL,
+        action_json TEXT NOT NULL,
+        undo_json TEXT NOT NULL DEFAULT '',
+        undoable INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'done',
+        executed_at TEXT NOT NULL,
+        undone_at TEXT NOT NULL DEFAULT '',
+        undo_error TEXT NOT NULL DEFAULT ''
+      )
+    `
+  ).run();
+
+  db.prepare(
+    `
+      CREATE INDEX IF NOT EXISTS idx_assistant_operation_logs_executed_at
+      ON assistant_operation_logs(executed_at DESC)
+    `
+  ).run();
+
+  db.prepare(
+    `
+      CREATE INDEX IF NOT EXISTS idx_assistant_operation_logs_status
+      ON assistant_operation_logs(status)
+    `
+  ).run();
+}
+
+function createAssistantOperationStore(db) {
+  ensureAssistantOperationTable(db);
+
+  return {
+    insert: db.prepare(
+      `
+        INSERT INTO assistant_operation_logs (
+          action_type,
+          action_kind,
+          action_summary,
+          action_json,
+          undo_json,
+          undoable,
+          status,
+          executed_at,
+          undone_at,
+          undo_error
+        )
+        VALUES (
+          @actionType,
+          @actionKind,
+          @actionSummary,
+          @actionJson,
+          @undoJson,
+          @undoable,
+          @status,
+          @executedAt,
+          @undoneAt,
+          @undoError
+        )
+      `
+    ),
+    getById: db.prepare(
+      `
+        SELECT
+          id,
+          action_type AS actionType,
+          action_kind AS actionKind,
+          action_summary AS actionSummary,
+          action_json AS actionJson,
+          undo_json AS undoJson,
+          undoable,
+          status,
+          executed_at AS executedAt,
+          undone_at AS undoneAt,
+          undo_error AS undoError
+        FROM assistant_operation_logs
+        WHERE id = ?
+        LIMIT 1
+      `
+    ),
+    listRecent: db.prepare(
+      `
+        SELECT
+          id,
+          action_type AS actionType,
+          action_kind AS actionKind,
+          action_summary AS actionSummary,
+          action_json AS actionJson,
+          undo_json AS undoJson,
+          undoable,
+          status,
+          executed_at AS executedAt,
+          undone_at AS undoneAt,
+          undo_error AS undoError
+        FROM assistant_operation_logs
+        ORDER BY id DESC
+        LIMIT ?
+      `
+    ),
+    markUndone: db.prepare(
+      `
+        UPDATE assistant_operation_logs
+        SET status = 'undone',
+            undone_at = @undoneAt,
+            undo_error = ''
+        WHERE id = @id
+      `
+    ),
+    markUndoFailed: db.prepare(
+      `
+        UPDATE assistant_operation_logs
+        SET status = 'undo_failed',
+            undo_error = @undoError
+        WHERE id = @id
+      `
+    )
+  };
+}
+
+function toOperationView(row) {
+  const action = jsonParseSafe(row?.actionJson, {});
+  const undo = jsonParseSafe(row?.undoJson, null);
+  return {
+    id: Number(row?.id || 0),
+    actionType: row?.actionType || "",
+    actionKind: row?.actionKind || "",
+    actionSummary: row?.actionSummary || "",
+    action,
+    undoable: Boolean(Number(row?.undoable || 0)) && Boolean(undo),
+    status: row?.status || "done",
+    executedAt: row?.executedAt || "",
+    undoneAt: row?.undoneAt || "",
+    undoError: row?.undoError || ""
+  };
+}
+
+function normalizeOpsLimit(rawLimit) {
+  const limit = Number(rawLimit || 0);
+  if (!Number.isFinite(limit) || limit <= 0) return 50;
+  return Math.min(MAX_ASSISTANT_OPS_LIST, Math.max(1, Math.trunc(limit)));
+}
+
+function createAssistantCalendarStore(electronApp) {
+  let datasetCache = null;
+
+  const loadDataset = () => {
+    if (datasetCache) return datasetCache;
+
+    const appPath =
+      electronApp && typeof electronApp.getAppPath === "function"
+        ? electronApp.getAppPath()
+        : process.cwd();
+    const candidatePaths = [
+      path.join(appPath, "src", "data", "calendar-events-1404-1405.json"),
+      path.join(__dirname, "..", "data", "calendar-events-1404-1405.json"),
+      path.join(process.cwd(), "src", "data", "calendar-events-1404-1405.json")
+    ];
+
+    for (const filePath of candidatePaths) {
+      try {
+        if (!fs.existsSync(filePath)) continue;
+        const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+        if (!parsed || typeof parsed !== "object") continue;
+        const days = parsed.days && typeof parsed.days === "object" ? parsed.days : {};
+        datasetCache = {
+          source: safeString(parsed.source).trim(),
+          generatedAt: safeString(parsed.generatedAt).trim(),
+          range: parsed.range && typeof parsed.range === "object" ? parsed.range : {},
+          days
+        };
+        return datasetCache;
+      } catch {
+        // Continue to next candidate path.
+      }
+    }
+
+    datasetCache = {
+      source: "",
+      generatedAt: "",
+      range: {},
+      days: {}
+    };
+    return datasetCache;
+  };
+
+  const getDay = (dateValue) => {
+    const canonical = toCanonicalJalaliDate(dateValue, "");
+    if (!canonical) {
+      return {
+        date: "",
+        isHoliday: false,
+        events: []
+      };
+    }
+    const dataset = loadDataset();
+    const fallbackKey = toPersianDigits(canonical);
+    const rawDay = dataset.days[canonical] || dataset.days[fallbackKey] || {};
+    const events = Array.isArray(rawDay.events)
+      ? rawDay.events
+          .map((event) => ({
+            description: safeString(event?.description).trim(),
+            additionalDescription: safeString(event?.additionalDescription).trim(),
+            isHoliday: Boolean(event?.isHoliday),
+            isReligious: Boolean(event?.isReligious)
+          }))
+          .filter((event) => event.description)
+      : [];
+    return {
+      date: canonical,
+      isHoliday: Boolean(rawDay?.isHoliday),
+      events
+    };
+  };
+
+  const buildContextInsight = () => {
+    const dataset = loadDataset();
+    const today = getRelativeJalaliDate(0);
+    const yesterday = getRelativeJalaliDate(-1);
+    const tomorrow = getRelativeJalaliDate(1);
+    const toPreview = (date) => {
+      const day = getDay(date);
+      return {
+        date: day.date,
+        isHoliday: day.isHoliday,
+        events: day.events.slice(0, 8)
+      };
+    };
+
+    return {
+      source: dataset.source,
+      generatedAt: dataset.generatedAt,
+      range: dataset.range,
+      today: toPreview(today),
+      yesterday: toPreview(yesterday),
+      tomorrow: toPreview(tomorrow)
+    };
+  };
+
+  return {
+    getDataset: loadDataset,
+    getDay,
+    buildContextInsight
+  };
+}
+
+function getDateVariantsForQuery(dateValue) {
+  const canonical = normalizeDigits(toCanonicalJalaliDate(dateValue, ""));
+  if (!canonical) return ["", ""];
+  return [canonical, toPersianDigits(canonical)];
+}
+
+function normalizeOperationRows(operationStore, limit = MAX_ASSISTANT_HISTORY_LOOKBACK) {
+  if (!operationStore) return [];
+  const safeLimit = Math.max(10, Math.min(1200, Number(limit || 0) || MAX_ASSISTANT_HISTORY_LOOKBACK));
+  return operationStore
+    .listRecent.all(safeLimit)
+    .map((row) => toOperationView(row))
+    .filter((row) => row?.id);
+}
+
+function operationDateToJalali(executedAt) {
+  const jalali = formatToJalaliDate(executedAt);
+  return toCanonicalJalaliDate(jalali, "");
+}
+
+function buildDailyActivitySummary(operationRows, maxDays = MAX_ASSISTANT_DAILY_MEMORY_DAYS) {
+  const map = new Map();
+
+  operationRows.forEach((row) => {
+    const day = operationDateToJalali(row.executedAt);
+    if (!day) return;
+    const current = map.get(day) || {
+      date: day,
+      totalActions: 0,
+      failedActions: 0,
+      undoneActions: 0,
+      topTypes: {},
+      samples: []
+    };
+    current.totalActions += 1;
+    if (row.status === "failed") {
+      current.failedActions += 1;
+    }
+    if (row.status === "undone") {
+      current.undoneActions += 1;
+    }
+    const actionType = safeString(row.actionType).trim() || "unknown";
+    current.topTypes[actionType] = Number(current.topTypes[actionType] || 0) + 1;
+    if (current.samples.length < 6) {
+      current.samples.push(safeString(row.actionSummary).trim() || actionType);
+    }
+    map.set(day, current);
+  });
+
+  return Array.from(map.values())
+    .sort((a, b) => safeString(b.date).localeCompare(safeString(a.date)))
+    .slice(0, Math.max(1, Math.min(90, Number(maxDays || 0) || MAX_ASSISTANT_DAILY_MEMORY_DAYS)))
+    .map((item) => ({
+      date: item.date,
+      totalActions: item.totalActions,
+      failedActions: item.failedActions,
+      undoneActions: item.undoneActions,
+      topActionTypes: Object.entries(item.topTypes)
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+        .slice(0, 4)
+        .map(([type, count]) => ({ type, count: Number(count || 0) })),
+      sampleSummaries: item.samples
+    }));
+}
+
+function buildUserMemorySnapshot(memoryStore, operationStore) {
+  const profile = memoryStore ? memoryStore.readProfile() : { displayName: "", preferences: {} };
+  const recentChats = memoryStore ? memoryStore.recentChats(MAX_ASSISTANT_CHAT_CONTEXT) : [];
+  const operationRows = normalizeOperationRows(operationStore);
+  const dailyActivity = buildDailyActivitySummary(operationRows);
+
+  return {
+    profile: {
+      displayName: profile.displayName || "",
+      preferences: profile.preferences || {},
+      updatedAt: profile.updatedAt || ""
+    },
+    dailyActivity,
+    recentChats: recentChats.map((item) => ({
+      role: item.role,
+      content: item.content,
+      createdAt: item.createdAt
+    }))
+  };
+}
+
+function buildOperationDaySnapshot(operationStore, targetDate) {
+  const canonical = normalizeDigits(toCanonicalJalaliDate(targetDate, ""));
+  if (!canonical) {
+    return {
+      date: "",
+      total: 0,
+      failed: 0,
+      undone: 0,
+      items: []
+    };
+  }
+
+  const rows = normalizeOperationRows(operationStore, MAX_ASSISTANT_HISTORY_LOOKBACK);
+  const matched = rows.filter((row) => operationDateToJalali(row.executedAt) === canonical);
+
+  return {
+    date: canonical,
+    total: matched.length,
+    failed: matched.filter((row) => row.status === "failed").length,
+    undone: matched.filter((row) => row.status === "undone").length,
+    items: matched.slice(0, 12).map((row) => ({
+      actionType: row.actionType,
+      summary: row.actionSummary,
+      status: row.status
+    }))
+  };
+}
+
+function buildCalendarDaySnapshot(targetDate, statements, operationStore, calendarStore) {
+  const [dateEn, dateFa] = getDateVariantsForQuery(targetDate);
+  const day = calendarStore.getDay(dateEn || targetDate);
+
+  const reminderStats = dateEn ? statements.reminderStatsByDate.get(dateEn, dateFa) : {};
+  const settlementTotals = dateEn ? statements.settlementTotalsByDate.get(dateEn, dateFa) : {};
+  const cashboxTotals = dateEn ? statements.cashboxTotalsByDate.get(dateEn, dateFa) : {};
+  const expenseTotals = dateEn ? statements.expenseTotalByDate.get(dateEn, dateFa) : {};
+  const ops = buildOperationDaySnapshot(operationStore, dateEn || targetDate);
+
+  return {
+    date: day.date || dateEn || "",
+    isHoliday: day.isHoliday,
+    events: day.events,
+    reminders: {
+      total: Number(reminderStats?.total || 0),
+      open: Number(reminderStats?.openCount || 0)
+    },
+    settlements: {
+      clientReceived: Number(settlementTotals?.clientReceived || 0),
+      partnerPaid: Number(settlementTotals?.partnerPaid || 0),
+      personalAmount: Number(settlementTotals?.personalAmount || 0)
+    },
+    cashbox: {
+      income: Number(cashboxTotals?.cashIn || 0),
+      outcome: Number(cashboxTotals?.cashOut || 0)
+    },
+    expenses: {
+      total: Number(expenseTotals?.expenseTotal || 0)
+    },
+    operations: ops
+  };
+}
+
+function formatCalendarDayReply(snapshot, profileName = "") {
+  const namePrefix = profileName ? `${profileName}، ` : "";
+  const eventLines = snapshot.events.length
+    ? snapshot.events
+        .slice(0, 6)
+        .map((event, index) => {
+          const tags = [];
+          if (event.isHoliday) tags.push("تعطیل");
+          if (event.isReligious) tags.push("مذهبی");
+          const tagText = tags.length ? ` (${tags.join(" - ")})` : "";
+          const extra = event.additionalDescription ? ` - ${event.additionalDescription}` : "";
+          return `${index + 1}) ${event.description}${tagText}${extra}`;
+        })
+        .join("\n")
+    : "رویداد ثبت‌شده‌ای برای این روز پیدا نشد.";
+
+  return [
+    `${namePrefix}خلاصه روز ${toPersianDigits(snapshot.date || "-")}:`,
+    snapshot.isHoliday ? "وضعیت: تعطیل رسمی" : "وضعیت: روز کاری",
+    `یادآورها: ${toPersianDigits(snapshot.reminders.total)} (باز: ${toPersianDigits(snapshot.reminders.open)})`,
+    `دریافتی کارفرما: ${toPersianDigits(Number(snapshot.settlements.clientReceived || 0).toLocaleString("fa-IR"))}`,
+    `پرداختی همکار: ${toPersianDigits(Number(snapshot.settlements.partnerPaid || 0).toLocaleString("fa-IR"))}`,
+    `صندوق (دخل/خرج): ${toPersianDigits(Number(snapshot.cashbox.income || 0).toLocaleString("fa-IR"))} / ${toPersianDigits(Number(snapshot.cashbox.outcome || 0).toLocaleString("fa-IR"))}`,
+    `هزینه‌ها: ${toPersianDigits(Number(snapshot.expenses.total || 0).toLocaleString("fa-IR"))}`,
+    `عملیات ثبت‌شده توسط دستیار: ${toPersianDigits(snapshot.operations.total)}`,
+    "رویدادها:",
+    eventLines
+  ].join("\n");
+}
+
+function formatHistoryDayReply(daySnapshot, profileName = "") {
+  const namePrefix = profileName ? `${profileName}، ` : "";
+  if (!daySnapshot.total) {
+    return `${namePrefix}برای ${toPersianDigits(daySnapshot.date || "-")} عملیاتی در لاگ دستیار پیدا نکردم.`;
+  }
+  const lines = daySnapshot.items
+    .slice(0, 8)
+    .map((item, index) => {
+      const status =
+        item.status === "undone"
+          ? "Undo"
+          : item.status === "failed"
+            ? "ناموفق"
+            : item.status === "undo_failed"
+              ? "Undo ناموفق"
+              : "انجام";
+      return `${index + 1}) [${status}] ${item.summary || item.actionType || "-"}`;
+    })
+    .join("\n");
+
+  return [
+    `${namePrefix}گزارش کارهای ${toPersianDigits(daySnapshot.date)}:`,
+    `تعداد کل: ${toPersianDigits(daySnapshot.total)} | ناموفق: ${toPersianDigits(daySnapshot.failed)} | Undo شده: ${toPersianDigits(daySnapshot.undone)}`,
+    lines
+  ].join("\n");
+}
+
+function tryHandleLocalAssistantMemoryQuery({
+  latestUserMessage,
+  memoryStore,
+  operationStore,
+  statements,
+  calendarStore
+}) {
+  const text = safeString(latestUserMessage).trim();
+  if (!text) return null;
+
+  const profile = memoryStore ? memoryStore.readProfile() : { displayName: "" };
+  const profileName = profile.displayName || "";
+
+  if (detectNameRecallIntent(text)) {
+    const reply = profileName
+      ? `${profileName}، بله یادم هست. نامی که برایت ذخیره کردم: ${profileName}`
+      : "هنوز نامت را ذخیره نکرده‌ام. اگر دوست داری بگو: «اسم من ... است» تا یادت نگه دارم.";
+    return {
+      assistantReply: reply,
+      pendingActions: []
+    };
+  }
+
+  const requestedDate = extractDateMention(text, getTodayJalaliDate());
+
+  if (detectHistoryIntent(text) && requestedDate) {
+    const snapshot = buildOperationDaySnapshot(operationStore, requestedDate);
+    if (!snapshot.date) snapshot.date = requestedDate;
+    return {
+      assistantReply: formatHistoryDayReply(snapshot, profileName),
+      pendingActions: []
+    };
+  }
+
+  if (detectCalendarIntent(text) && requestedDate) {
+    const snapshot = buildCalendarDaySnapshot(
+      requestedDate,
+      statements,
+      operationStore,
+      calendarStore
+    );
+    return {
+      assistantReply: formatCalendarDayReply(snapshot, profileName),
+      pendingActions: []
+    };
+  }
+
+  return null;
+}
+
+function buildAssistantBehaviorHints(operationStore, statements, memoryStore = null) {
+  if (!operationStore) {
+    return {
+      totalLoggedActions: 0,
+      topActionTypes: [],
+      preferredReminderTime: "",
+      lastOperationAt: "",
+      userDisplayName: memoryStore ? memoryStore.readProfile().displayName : ""
+    };
+  }
+
+  const rows = operationStore.listRecent.all(MAX_ASSISTANT_OPS_LIST);
+  const typeCounts = {};
+  let lastOperationAt = "";
+
+  rows.forEach((row) => {
+    const actionType = safeString(row?.actionType).trim();
+    if (actionType) {
+      typeCounts[actionType] = Number(typeCounts[actionType] || 0) + 1;
+    }
+    if (!lastOperationAt && row?.executedAt) {
+      lastOperationAt = safeString(row.executedAt);
+    }
+  });
+
+  const topActionTypes = Object.entries(typeCounts)
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+    .slice(0, 8)
+    .map(([type, count]) => ({ type, count: Number(count || 0) }));
+
+  const reminderTimeCounts = {};
+  statements.recentReminders.all().forEach((row) => {
+    const time = safeString(row?.reminderTime).trim();
+    if (!time) return;
+    reminderTimeCounts[time] = Number(reminderTimeCounts[time] || 0) + 1;
+  });
+
+  const preferredReminderTime = Object.entries(reminderTimeCounts)
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+    .map(([time]) => time)[0] || "";
+
+  const profile = memoryStore ? memoryStore.readProfile() : { displayName: "" };
+
+  return {
+    totalLoggedActions: rows.length,
+    topActionTypes,
+    preferredReminderTime,
+    lastOperationAt,
+    userDisplayName: profile.displayName || "",
+    dailyActivityPreview: buildDailyActivitySummary(
+      normalizeOperationRows(operationStore, 180),
+      7
+    )
+  };
+}
+
+function captureBeforeStateForUndo(action, statements) {
+  const type = action.type;
+
+  if (type === "update_service" || type === "delete_service") {
+    const id = resolveServiceId(action.payload, statements);
+    return id ? { service: statements.serviceById.get(id) } : null;
+  }
+
+  if (type === "update_project" || type === "delete_project") {
+    const id = resolveProjectId(action.payload, statements);
+    if (!id) return null;
+    return {
+      project: statements.projectByIdDetail.get(id),
+      serviceIds: statements.projectServiceIdsByProject
+        .all(id)
+        .map((row) => Number(row.serviceId || 0))
+        .filter((item) => Number.isFinite(item) && item > 0)
+    };
+  }
+
+  if (type === "update_partner" || type === "delete_partner") {
+    const partner = resolvePartner(action.payload, statements);
+    if (!partner?.id) return null;
+    return {
+      partner: statements.partnerById.get(partner.id),
+      terms: statements.partnerTermsByPartner.all(partner.id)
+    };
+  }
+
+  if (type === "upsert_partner_term") {
+    const payload = normalizePartnerTermPayload(action.payload);
+    const partner = resolvePartner(payload, statements);
+    const projectId = resolveProjectId(payload, statements);
+    if (!partner?.id || !projectId) return null;
+    const existing = statements.partnerTermByPair.get(partner.id, projectId);
+    return {
+      partnerId: partner.id,
+      projectId,
+      term: existing ? statements.partnerTermById.get(existing.id) : null
+    };
+  }
+
+  if (type === "delete_partner_term") {
+    const termId = resolvePartnerTermId(action.payload, statements);
+    return termId ? { term: statements.partnerTermById.get(termId) } : null;
+  }
+
+  if (type === "update_settlement" || type === "delete_settlement") {
+    const id = resolveSettlementId(action.payload, statements);
+    return id ? { settlement: statements.settlementById.get(id) } : null;
+  }
+
+  if (
+    type === "update_reminder" ||
+    type === "toggle_reminder_done" ||
+    type === "snooze_reminder" ||
+    type === "clear_reminder_snooze" ||
+    type === "delete_reminder"
+  ) {
+    const id =
+      type === "snooze_reminder"
+        ? toId(action.payload?.id ?? action.payload?.reminderId)
+        : resolveReminderId(action.payload, statements);
+    return id ? { reminder: statements.reminderById.get(id) } : null;
+  }
+
+  if (type === "update_expense" || type === "delete_expense") {
+    const id = resolveExpenseId(action.payload, statements);
+    return id ? { expense: statements.expenseById.get(id) } : null;
+  }
+
+  if (type === "update_cashbox" || type === "delete_cashbox") {
+    const id = resolveCashboxId(action.payload, statements);
+    return id ? { cashbox: statements.cashboxById.get(id) } : null;
+  }
+
+  return null;
+}
+
+function buildUndoInstruction(action, beforeState, result) {
+  const type = action.type;
+
+  if (type === "create_service") {
+    return { type: "delete_by_id", entity: "services", id: Number(result.id || 0) };
+  }
+  if (type === "update_service" || type === "delete_service") {
+    return beforeState?.service ? { type: "restore_service", row: beforeState.service } : null;
+  }
+
+  if (type === "create_project") {
+    return { type: "delete_by_id", entity: "projects", id: Number(result.id || 0) };
+  }
+  if (type === "update_project" || type === "delete_project") {
+    return beforeState?.project
+      ? {
+          type: "restore_project",
+          row: beforeState.project,
+          serviceIds: Array.isArray(beforeState.serviceIds) ? beforeState.serviceIds : []
+        }
+      : null;
+  }
+
+  if (type === "create_partner") {
+    return { type: "delete_by_id", entity: "partners", id: Number(result.id || 0) };
+  }
+  if (type === "update_partner" || type === "delete_partner") {
+    return beforeState?.partner
+      ? {
+          type: "restore_partner",
+          row: beforeState.partner,
+          terms: Array.isArray(beforeState.terms) ? beforeState.terms : []
+        }
+      : null;
+  }
+
+  if (type === "upsert_partner_term") {
+    if (beforeState?.term) {
+      return { type: "restore_partner_term", row: beforeState.term };
+    }
+    return beforeState?.partnerId && beforeState?.projectId
+      ? {
+          type: "delete_partner_term_by_pair",
+          partnerId: beforeState.partnerId,
+          projectId: beforeState.projectId
+        }
+      : null;
+  }
+  if (type === "delete_partner_term") {
+    return beforeState?.term ? { type: "restore_partner_term", row: beforeState.term } : null;
+  }
+
+  if (type === "create_settlement") {
+    return { type: "delete_by_id", entity: "settlements", id: Number(result.id || 0) };
+  }
+  if (type === "update_settlement" || type === "delete_settlement") {
+    return beforeState?.settlement
+      ? { type: "restore_settlement", row: beforeState.settlement }
+      : null;
+  }
+
+  if (type === "create_reminder") {
+    return { type: "delete_by_id", entity: "reminders", id: Number(result.id || 0) };
+  }
+  if (
+    type === "update_reminder" ||
+    type === "toggle_reminder_done" ||
+    type === "snooze_reminder" ||
+    type === "clear_reminder_snooze" ||
+    type === "delete_reminder"
+  ) {
+    return beforeState?.reminder ? { type: "restore_reminder", row: beforeState.reminder } : null;
+  }
+
+  if (type === "create_expense") {
+    return { type: "delete_by_id", entity: "expenses", id: Number(result.id || 0) };
+  }
+  if (type === "update_expense" || type === "delete_expense") {
+    return beforeState?.expense ? { type: "restore_expense", row: beforeState.expense } : null;
+  }
+
+  if (type === "create_cashbox") {
+    return { type: "delete_by_id", entity: "cashbox", id: Number(result.id || 0) };
+  }
+  if (type === "update_cashbox" || type === "delete_cashbox") {
+    return beforeState?.cashbox ? { type: "restore_cashbox", row: beforeState.cashbox } : null;
+  }
+
+  return null;
+}
+
+function applyUndoInstruction(undo, statements) {
+  if (!undo || typeof undo !== "object") {
+    throw new Error("Undo data is missing.");
+  }
+
+  const allowedDeleteTables = new Set([
+    "services",
+    "projects",
+    "partners",
+    "settlements",
+    "reminders",
+    "expenses",
+    "cashbox"
+  ]);
+
+  const runDeleteById = (tableName, idValue) => {
+    const table = safeString(tableName).trim().toLowerCase();
+    if (!allowedDeleteTables.has(table)) {
+      throw new Error("Undo delete target is not allowed.");
+    }
+    const id = Number(idValue || 0);
+    if (!id) return;
+    statements.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+  };
+
+  if (undo.type === "delete_by_id") {
+    const table = String(undo.entity || "").trim();
+    if (!table) {
+      throw new Error("Undo delete target is invalid.");
+    }
+    runDeleteById(table, undo.id);
+    return;
+  }
+
+  if (undo.type === "restore_service") {
+    const row = undo.row || {};
+    statements.db.prepare(
+      `
+        INSERT OR REPLACE INTO services (
+          id, name, pricing_model, rate, currency, description, is_active, created_at
+        ) VALUES (
+          @id, @name, @pricingModel, @rate, @currency, @description, @isActive, @createdAt
+        )
+      `
+    ).run({
+      id: Number(row.id || 0),
+      name: row.name || "",
+      pricingModel: row.pricingModel || "project",
+      rate: Number(row.rate || 0),
+      currency: row.currency || "TOMAN",
+      description: row.description || "",
+      isActive: Number(row.isActive || 0),
+      createdAt: row.createdAt || new Date().toISOString()
+    });
+    return;
+  }
+
+  if (undo.type === "restore_project") {
+    const row = undo.row || {};
+    const serviceIds = Array.isArray(undo.serviceIds) ? undo.serviceIds : [];
+    const tx = statements.db.transaction(() => {
+      statements.db.prepare(
+        `
+          INSERT OR REPLACE INTO projects (
+            id, title, client_name, status, start_date, end_date, notes, created_at
+          ) VALUES (
+            @id, @title, @clientName, @status, @startDate, @endDate, @notes, @createdAt
+          )
+        `
+      ).run({
+        id: Number(row.id || 0),
+        title: row.title || "",
+        clientName: row.clientName || "",
+        status: row.status || "open",
+        startDate: row.startDate || getTodayJalaliDate(),
+        endDate: row.endDate || "",
+        notes: row.notes || "",
+        createdAt: row.createdAt || new Date().toISOString()
+      });
+
+      statements.db.prepare("DELETE FROM project_services WHERE project_id = ?").run(Number(row.id || 0));
+      const now = new Date().toISOString();
+      serviceIds.forEach((serviceId) => {
+        const sid = Number(serviceId || 0);
+        if (!sid) return;
+        statements.db
+          .prepare(
+            "INSERT OR IGNORE INTO project_services (project_id, service_id, created_at) VALUES (?, ?, ?)"
+          )
+          .run(Number(row.id || 0), sid, now);
+      });
+    });
+    tx();
+    return;
+  }
+
+  if (undo.type === "restore_partner") {
+    const row = undo.row || {};
+    const terms = Array.isArray(undo.terms) ? undo.terms : [];
+    const tx = statements.db.transaction(() => {
+      statements.db.prepare(
+        `
+          INSERT OR REPLACE INTO partners (
+            id,
+            full_name,
+            role,
+            phone,
+            share_percent,
+            payment_model,
+            salary_period,
+            salary_amount,
+            is_active,
+            created_at
+          ) VALUES (
+            @id,
+            @fullName,
+            @role,
+            @phone,
+            @sharePercent,
+            @paymentModel,
+            @salaryPeriod,
+            @salaryAmount,
+            @isActive,
+            @createdAt
+          )
+        `
+      ).run({
+        id: Number(row.id || 0),
+        fullName: row.fullName || "",
+        role: row.role || "",
+        phone: row.phone || "",
+        sharePercent: Number(row.sharePercent || 0),
+        paymentModel: row.paymentModel || "percent",
+        salaryPeriod: row.salaryPeriod || "monthly",
+        salaryAmount: Number(row.salaryAmount || 0),
+        isActive: Number(row.isActive || 0),
+        createdAt: row.createdAt || new Date().toISOString()
+      });
+
+      terms.forEach((term) => {
+        statements.db.prepare(
+          `
+            INSERT OR REPLACE INTO partner_project_terms (
+              id,
+              partner_id,
+              project_id,
+              payment_model,
+              percent_value,
+              salary_amount,
+              created_at,
+              updated_at
+            ) VALUES (
+              @id,
+              @partnerId,
+              @projectId,
+              @paymentModel,
+              @percentValue,
+              @salaryAmount,
+              @createdAt,
+              @updatedAt
+            )
+          `
+        ).run({
+          id: Number(term.id || 0),
+          partnerId: Number(term.partnerId || 0),
+          projectId: Number(term.projectId || 0),
+          paymentModel: term.paymentModel || "percent",
+          percentValue: Number(term.percentValue || 0),
+          salaryAmount: Number(term.salaryAmount || 0),
+          createdAt: term.createdAt || new Date().toISOString(),
+          updatedAt: term.updatedAt || new Date().toISOString()
+        });
+      });
+    });
+
+    tx();
+    return;
+  }
+
+  if (undo.type === "restore_partner_term") {
+    const row = undo.row || {};
+    statements.db.prepare(
+      `
+        INSERT OR REPLACE INTO partner_project_terms (
+          id,
+          partner_id,
+          project_id,
+          payment_model,
+          percent_value,
+          salary_amount,
+          created_at,
+          updated_at
+        ) VALUES (
+          @id,
+          @partnerId,
+          @projectId,
+          @paymentModel,
+          @percentValue,
+          @salaryAmount,
+          @createdAt,
+          @updatedAt
+        )
+      `
+    ).run({
+      id: Number(row.id || 0),
+      partnerId: Number(row.partnerId || 0),
+      projectId: Number(row.projectId || 0),
+      paymentModel: row.paymentModel || "percent",
+      percentValue: Number(row.percentValue || 0),
+      salaryAmount: Number(row.salaryAmount || 0),
+      createdAt: row.createdAt || new Date().toISOString(),
+      updatedAt: row.updatedAt || new Date().toISOString()
+    });
+    return;
+  }
+
+  if (undo.type === "delete_partner_term_by_pair") {
+    const pair = statements.partnerTermByPair.get(
+      Number(undo.partnerId || 0),
+      Number(undo.projectId || 0)
+    );
+    if (pair?.id) {
+      statements.deletePartnerTerm.run(Number(pair.id));
+    }
+    return;
+  }
+
+  if (undo.type === "restore_settlement") {
+    const row = undo.row || {};
+    statements.db.prepare(
+      `
+        INSERT OR REPLACE INTO settlements (
+          id,
+          settlement_type,
+          related_id,
+          counterparty_name,
+          project_id,
+          amount,
+          payment_method,
+          description,
+          settlement_date,
+          created_at
+        ) VALUES (
+          @id,
+          @settlementType,
+          @relatedId,
+          @counterpartyName,
+          @projectId,
+          @amount,
+          @paymentMethod,
+          @description,
+          @settlementDate,
+          @createdAt
+        )
+      `
+    ).run({
+      id: Number(row.id || 0),
+      settlementType: row.settlementType || "personal",
+      relatedId: row.relatedId ? Number(row.relatedId) : null,
+      counterpartyName: row.counterpartyName || "",
+      projectId: row.projectId ? Number(row.projectId) : null,
+      amount: Number(row.amount || 0),
+      paymentMethod: row.paymentMethod || "cash",
+      description: row.description || "",
+      settlementDate: row.settlementDate || getTodayJalaliDate(),
+      createdAt: row.createdAt || new Date().toISOString()
+    });
+    return;
+  }
+
+  if (undo.type === "restore_reminder") {
+    const row = undo.row || {};
+    statements.db.prepare(
+      `
+        INSERT OR REPLACE INTO reminders (
+          id,
+          title,
+          description,
+          reminder_date,
+          reminder_time,
+          is_done,
+          repeat_type,
+          repeat_until,
+          snooze_until,
+          project_id,
+          partner_id,
+          created_at,
+          updated_at
+        ) VALUES (
+          @id,
+          @title,
+          @description,
+          @reminderDate,
+          @reminderTime,
+          @isDone,
+          @repeatType,
+          @repeatUntil,
+          @snoozeUntil,
+          @projectId,
+          @partnerId,
+          @createdAt,
+          @updatedAt
+        )
+      `
+    ).run({
+      id: Number(row.id || 0),
+      title: row.title || "",
+      description: row.description || "",
+      reminderDate: row.reminderDate || getTodayJalaliDate(),
+      reminderTime: row.reminderTime || "09:00",
+      isDone: Number(row.isDone || 0),
+      repeatType: row.repeatType || "none",
+      repeatUntil: row.repeatUntil || "",
+      snoozeUntil: row.snoozeUntil || "",
+      projectId: row.projectId ? Number(row.projectId) : null,
+      partnerId: row.partnerId ? Number(row.partnerId) : null,
+      createdAt: row.createdAt || new Date().toISOString(),
+      updatedAt: row.updatedAt || new Date().toISOString()
+    });
+    return;
+  }
+
+  if (undo.type === "restore_expense") {
+    const row = undo.row || {};
+    statements.db.prepare(
+      `
+        INSERT OR REPLACE INTO expenses (
+          id,
+          scope,
+          paid_by,
+          category,
+          amount,
+          expense_date,
+          description,
+          created_at
+        ) VALUES (
+          @id,
+          @scope,
+          @paidBy,
+          @category,
+          @amount,
+          @expenseDate,
+          @description,
+          @createdAt
+        )
+      `
+    ).run({
+      id: Number(row.id || 0),
+      scope: row.scope || "business",
+      paidBy: row.paidBy || "",
+      category: row.category || "",
+      amount: Number(row.amount || 0),
+      expenseDate: row.expenseDate || getTodayJalaliDate(),
+      description: row.description || "",
+      createdAt: row.createdAt || new Date().toISOString()
+    });
+    return;
+  }
+
+  if (undo.type === "restore_cashbox") {
+    const row = undo.row || {};
+    statements.db.prepare(
+      `
+        INSERT OR REPLACE INTO cashbox (
+          id,
+          entry_type,
+          amount,
+          category,
+          reference_type,
+          reference_id,
+          entry_date,
+          description,
+          created_at
+        ) VALUES (
+          @id,
+          @entryType,
+          @amount,
+          @category,
+          @referenceType,
+          @referenceId,
+          @entryDate,
+          @description,
+          @createdAt
+        )
+      `
+    ).run({
+      id: Number(row.id || 0),
+      entryType: row.entryType || "in",
+      amount: Number(row.amount || 0),
+      category: row.category || "",
+      referenceType: row.referenceType || "",
+      referenceId: row.referenceId ? Number(row.referenceId) : null,
+      entryDate: row.entryDate || getTodayJalaliDate(),
+      description: row.description || "",
+      createdAt: row.createdAt || new Date().toISOString()
+    });
+    return;
+  }
+
+  throw new Error("Undo operation type is not supported.");
+}
+
+async function executeActions(actions, statements, runtime = {}, operationStore = null) {
   const list = Array.isArray(actions) ? actions.slice(0, MAX_EXECUTION_ACTIONS) : [];
   const executed = [];
   const failed = [];
@@ -2567,42 +4627,101 @@ function executeActions(actions, statements) {
   for (const rawAction of list) {
     const normalized = normalizeAction(rawAction, getTodayJalaliDate());
     if (!normalized) {
+      const summary = safeString(rawAction?.summary).trim() || "Action is invalid";
+      const errorText = "Action type is not supported.";
       failed.push({
-        summary: safeString(rawAction?.summary).trim() || "Ø¹Ù…Ù„ÛŒØ§Øª Ù†Ø§Ù…Ø¹ØªØ¨Ø±",
-        error: "Ù†ÙˆØ¹ Ø¹Ù…Ù„ÛŒØ§Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯."
+        summary,
+        error: errorText
       });
+      if (operationStore) {
+        operationStore.insert.run({
+          actionType: safeString(rawAction?.type || "").trim().toLowerCase() || "unknown",
+          actionKind: "invalid",
+          actionSummary: summary,
+          actionJson: jsonStringifySafe(rawAction || {}, "{}"),
+          undoJson: "",
+          undoable: 0,
+          status: "failed",
+          executedAt: new Date().toISOString(),
+          undoneAt: "",
+          undoError: errorText
+        });
+      }
       continue;
     }
 
+    const beforeState = captureBeforeStateForUndo(normalized, statements);
+
     try {
-      const result = executeWriteAction(normalized, statements);
+      const result = await executeWriteAction(normalized, statements, runtime);
+      const undoInstruction = buildUndoInstruction(normalized, beforeState, result);
+      let operationId = null;
+
+      if (operationStore) {
+        const insertInfo = operationStore.insert.run({
+          actionType: normalized.type,
+          actionKind: normalized.kind || "write",
+          actionSummary: result.summary || normalized.summary,
+          actionJson: jsonStringifySafe(normalized, "{}"),
+          undoJson: undoInstruction ? jsonStringifySafe(undoInstruction, "{}") : "",
+          undoable: undoInstruction ? 1 : 0,
+          status: "done",
+          executedAt: new Date().toISOString(),
+          undoneAt: "",
+          undoError: ""
+        });
+        operationId = Number(insertInfo.lastInsertRowid || 0);
+      }
+
       executed.push({
         id: result.id,
         type: normalized.type,
-        summary: result.summary || normalized.summary
+        summary: result.summary || normalized.summary,
+        operationId,
+        undoable: Boolean(undoInstruction)
       });
     } catch (error) {
+      const errorText = safeString(error?.message).trim() || "Unknown error";
       failed.push({
         type: normalized.type,
         summary: normalized.summary,
-        error: safeString(error?.message).trim() || "Ø®Ø·Ø§ÛŒ Ù†Ø§Ø´Ù†Ø§Ø®ØªÙ‡"
+        error: errorText
       });
+      if (operationStore) {
+        operationStore.insert.run({
+          actionType: normalized.type,
+          actionKind: normalized.kind || "write",
+          actionSummary: normalized.summary,
+          actionJson: jsonStringifySafe(normalized, "{}"),
+          undoJson: "",
+          undoable: 0,
+          status: "failed",
+          executedAt: new Date().toISOString(),
+          undoneAt: "",
+          undoError: errorText
+        });
+      }
     }
   }
 
   return { executed, failed };
 }
 
-function registerAssistantHandlers(ipcMain, db, electronApp) {
+function registerAssistantHandlers(ipcMain, db, electronApp, getMainWindow = null) {
   const statements = createDbStatements(db);
+  const operationStore = createAssistantOperationStore(db);
+  const memoryStore = createAssistantMemoryStore(db);
+  const calendarStore = createAssistantCalendarStore(electronApp);
 
   ipcMain.handle("assistant:settings:get", () => {
     const settings = loadSettings(electronApp);
-    return toSettingsResponse(settings);
+    const profile = memoryStore.readProfile();
+    return toSettingsResponse(settings, profile);
   });
 
   ipcMain.handle("assistant:settings:update", (_, payload = {}) => {
     const current = loadSettings(electronApp);
+    const currentProfile = memoryStore.readProfile();
     const next = {
       model: payload.model !== undefined ? payload.model : current.model,
       apiKey: current.apiKey
@@ -2616,22 +4735,70 @@ function registerAssistantHandlers(ipcMain, db, electronApp) {
       next.apiKey = inputApiKey;
     }
 
+    let savedProfile = currentProfile;
+    if (payload.displayName !== undefined) {
+      savedProfile = memoryStore.updateProfile({
+        displayName: payload.displayName
+      });
+    }
+
     const saved = saveSettings(electronApp, next);
-    return toSettingsResponse(saved);
+    return toSettingsResponse(saved, savedProfile);
   });
 
   ipcMain.handle("assistant:chat", async (_, payload = {}) => {
     const settings = loadSettings(electronApp);
-    if (!settings.apiKey) {
-      throw new Error("Ú©Ù„ÛŒØ¯ Gemini ØªÙ†Ø¸ÛŒÙ… Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.");
-    }
-
     const messages = sanitizeChatMessages(payload.messages);
     if (!messages.length) {
       throw new Error("Ù¾ÛŒØ§Ù…ÛŒ Ø¨Ø±Ø§ÛŒ Ø¯Ø³ØªÛŒØ§Ø± Ø§Ø±Ø³Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.");
     }
 
-    const context = buildContextSnapshot(statements);
+    const latestUserMessage = pickLatestUserMessage(messages);
+    if (latestUserMessage) {
+      memoryStore.appendChat("user", latestUserMessage);
+      const inferredName = extractProfileNameFromText(latestUserMessage);
+      if (inferredName) {
+        const profile = memoryStore.readProfile();
+        if (inferredName !== profile.displayName) {
+          memoryStore.updateProfile({ displayName: inferredName });
+        }
+      }
+    }
+
+    const localHandled = tryHandleLocalAssistantMemoryQuery({
+      latestUserMessage,
+      memoryStore,
+      operationStore,
+      statements,
+      calendarStore
+    });
+    if (localHandled) {
+      if (localHandled.assistantReply) {
+        memoryStore.appendChat("assistant", localHandled.assistantReply);
+      }
+      const profile = memoryStore.readProfile();
+      return {
+        assistantReply: localHandled.assistantReply,
+        pendingActions: Array.isArray(localHandled.pendingActions)
+          ? localHandled.pendingActions
+          : [],
+        profileDisplayName: profile.displayName || ""
+      };
+    }
+
+    if (!settings.apiKey) {
+      throw new Error("Ú©Ù„ÛŒØ¯ Gemini ØªÙ†Ø¸ÛŒÙ… Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.");
+    }
+
+    const userBehavior = buildAssistantBehaviorHints(operationStore, statements, memoryStore);
+    const userMemory = buildUserMemorySnapshot(memoryStore, operationStore);
+    const calendarInsight = calendarStore.buildContextInsight();
+    const context = buildContextSnapshot(
+      statements,
+      userBehavior,
+      userMemory,
+      calendarInsight
+    );
     let activeModel = sanitizeModel(settings.model);
     let rawModelText = "";
 
@@ -2682,22 +4849,84 @@ function registerAssistantHandlers(ipcMain, db, electronApp) {
         ? "Ø¹Ù…Ù„ÛŒØ§Øª Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ÛŒ Ø¢Ù…Ø§Ø¯Ù‡ Ø§Ø³Øª. Ø¨Ø¹Ø¯ Ø§Ø² ØªØ§ÛŒÛŒØ¯ØŒ Ø§Ø¬Ø±Ø§ Ù…ÛŒâ€ŒÚ©Ù†Ù…."
         : "Ù¾Ø§Ø³Ø® Ø¢Ù…Ø§Ø¯Ù‡ Ø´Ø¯.");
 
+    if (assistantReply) {
+      memoryStore.appendChat("assistant", assistantReply);
+    }
+    const profile = memoryStore.readProfile();
+
     return {
       assistantReply,
       pendingActions,
-      modelUsed: activeModel
+      modelUsed: activeModel,
+      profileDisplayName: profile.displayName || ""
     };
   });
 
-  ipcMain.handle("assistant:execute-actions", (_, payload = {}) => {
+  ipcMain.handle("assistant:execute-actions", async (_, payload = {}) => {
     const actions = Array.isArray(payload.actions) ? payload.actions : [];
-    return executeActions(actions, statements);
+    return executeActions(actions, statements, { getMainWindow }, operationStore);
+  });
+
+  ipcMain.handle("assistant:operations:list", (_, payload = {}) => {
+    const limit = normalizeOpsLimit(payload?.limit);
+    const items = operationStore
+      .listRecent.all(limit)
+      .map((row) => toOperationView(row));
+    return { items };
+  });
+
+  ipcMain.handle("assistant:operations:undo", (_, payload = {}) => {
+    const operationId = Number(payload?.operationId || payload?.id || 0);
+    if (!Number.isFinite(operationId) || operationId <= 0) {
+      throw new Error("Operation id is invalid.");
+    }
+
+    const row = operationStore.getById.get(operationId);
+    if (!row) {
+      throw new Error("Operation not found.");
+    }
+
+    const operation = toOperationView(row);
+    if (operation.status === "undone") {
+      return {
+        ok: true,
+        alreadyUndone: true,
+        operation
+      };
+    }
+
+    const undo = jsonParseSafe(row.undoJson, null);
+    if (!operation.undoable || !undo) {
+      throw new Error("This operation cannot be undone.");
+    }
+
+    try {
+      applyUndoInstruction(undo, statements);
+      operationStore.markUndone.run({
+        id: operationId,
+        undoneAt: new Date().toISOString()
+      });
+      const updated = operationStore.getById.get(operationId);
+      return {
+        ok: true,
+        operation: toOperationView(updated || row)
+      };
+    } catch (error) {
+      const undoError = safeString(error?.message).trim() || "Unknown undo error";
+      operationStore.markUndoFailed.run({
+        id: operationId,
+        undoError
+      });
+      throw new Error(`Undo failed: ${undoError}`);
+    }
   });
 }
 
 module.exports = {
   registerAssistantHandlers
 };
+
+
 
 
 

@@ -12,7 +12,8 @@ let reminderAlertLastDueTodayCount = 0;
 let calendarEventsDatasetPromise = null;
 const assistantUiState = {
   messages: [],
-  pendingActions: []
+  pendingActions: [],
+  operations: []
 };
 
 const sectionMap = {
@@ -42,7 +43,7 @@ const helpMap = {
   cashbox:
     "💵 اینجا خیلی ساده فقط دخل و خرج ثبت می‌کنی.\n\n✅ مبلغ، تاریخ و توضیح را وارد کن.\n✅ اگر پول گرفتی «ثبت دخل» را بزن.\n✅ اگر پول دادی «ثبت خرج» را بزن.\n\n👶 مثال:\nدخل: ۱۵,۰۰۰,۰۰۰ از کارفرما\nخرج: ۴,۰۰۰,۰۰۰ برای همکار",
   assistant:
-    "🤖 اینجا دستیار هوش مصنوعی کامل برنامه است.\n\n✅ چه کار می‌کند؟\n۱) انجام CRUD تمام بخش‌ها (خدمت/پروژه/همکار/تسویه/ریمایندر/هزینه/صندوق)\n۲) گزارش‌گیری مالی و تحلیل سریع\n۳) ماشین‌حساب دقیق و اجرای SQL ایمن با تایید شما\n۴) پرسیدن سوال تکمیلی وقتی داده ناقص باشد\n\n👶 مثال:\n«پروژه جدید ثبت کن با عنوان X برای کارفرما Y»\n«خلاصه سود پروژه‌ها را بده»\n«این عبارت را دقیق حساب کن: (۱۲۵۰۰۰۰*۳.۵)-۱۸٪»"
+    "🤖 اینجا دستیار هوش مصنوعی کامل برنامه است.\n\n✅ چه کار می‌کند؟\n۱) انجام CRUD تمام بخش‌ها (خدمت/پروژه/همکار/تسویه/ریمایندر/هزینه/صندوق)\n۲) گزارش‌گیری مالی و خروجی Excel/PDF از خود چت\n۳) ماشین‌حساب دقیق و اجرای SQL ایمن با تایید شما\n۴) لاگ کامل عملیات + Undo برای هر اکشن قابل برگشت\n۵) پرسیدن سوال تکمیلی وقتی داده ناقص باشد\n۶) حافظه کاربر (نام، سوابق روزانه، و پاسخ به سوال‌های دیروز/روزهای قبل)\n\n👶 مثال:\n«پروژه جدید ثبت کن با عنوان X برای کارفرما Y»\n«گزارش سود پروژه‌ها را PDF خروجی بگیر»\n«این عبارت را دقیق حساب کن: (۱۲۵۰۰۰۰*۳.۵)-۱۸٪»"
 };
 
 const quickGuideMap = {
@@ -53,7 +54,7 @@ const quickGuideMap = {
   reminders: ["۱️⃣ انتخاب روز", "۲️⃣ ثبت یادآور", "۳️⃣ دیدن دریافتی/پرداختی", "✅ پیگیری روزانه"],
   expenses: ["۱️⃣ انتخاب دامنه", "۲️⃣ ثبت مبلغ", "۳️⃣ ثبت تاریخ", "✅ ذخیره"],
   cashbox: ["۱️⃣ ثبت مبلغ", "۲️⃣ ثبت تاریخ", "۳️⃣ ثبت توضیح", "✅ دکمه دخل یا خرج"],
-  assistant: ["۱️⃣ نوشتن درخواست", "۲️⃣ سوال تکمیلی (درصورت نیاز)", "۳️⃣ تایید عملیات", "✅ اجرای کامل + گزارش"]
+  assistant: ["۱️⃣ نوشتن درخواست", "۲️⃣ سوال تکمیلی (درصورت نیاز)", "۳️⃣ تایید عملیات", "✅ اجرا + لاگ + Undo"]
 };
 
 const JALALI_MONTH_NAMES = Object.freeze([
@@ -2853,6 +2854,7 @@ async function initCashboxSection() {
 }
 
 async function initAssistantSection() {
+  const displayNameInput = document.getElementById("assistantDisplayName");
   const apiKeyInput = document.getElementById("assistantApiKey");
   const clearApiKeyInput = document.getElementById("assistantClearApiKey");
   const modelInput = document.getElementById("assistantModel");
@@ -2869,8 +2871,11 @@ async function initAssistantSection() {
   const confirmActionsBtn = document.getElementById("assistantConfirmActionsBtn");
   const cancelActionsBtn = document.getElementById("assistantCancelActionsBtn");
   const quickPrompts = document.getElementById("assistantQuickPrompts");
+  const operationsList = document.getElementById("assistantOperationsList");
+  const refreshOpsBtn = document.getElementById("assistantRefreshOpsBtn");
 
   if (
+    !displayNameInput ||
     !apiKeyInput ||
     !clearApiKeyInput ||
     !modelInput ||
@@ -2885,7 +2890,8 @@ async function initAssistantSection() {
     !pendingBox ||
     !pendingList ||
     !confirmActionsBtn ||
-    !cancelActionsBtn
+    !cancelActionsBtn ||
+    !operationsList
   ) {
     return;
   }
@@ -2979,14 +2985,82 @@ async function initAssistantSection() {
       .join("");
   };
 
+  const formatOperationDateTime = (isoString) => {
+    if (!isoString) return "-";
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return String(isoString);
+    return new Intl.DateTimeFormat("fa-IR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "Asia/Tehran"
+    }).format(date);
+  };
+
+  const operationStatusInfo = (status) => {
+    if (status === "undone") {
+      return { label: "Undo شد", className: "assistant-op-status-undone" };
+    }
+    if (status === "failed") {
+      return { label: "ناموفق", className: "assistant-op-status-failed" };
+    }
+    if (status === "undo_failed") {
+      return { label: "Undo ناموفق", className: "assistant-op-status-undo-failed" };
+    }
+    return { label: "انجام شد", className: "assistant-op-status-done" };
+  };
+
+  const renderOperations = () => {
+    const items = Array.isArray(assistantUiState.operations)
+      ? assistantUiState.operations
+      : [];
+
+    if (!items.length) {
+      operationsList.innerHTML = `<li class="assistant-op-empty">هنوز عملیاتی ثبت نشده است.</li>`;
+      return;
+    }
+
+    operationsList.innerHTML = items
+      .map((item) => {
+        const status = operationStatusInfo(item.status);
+        const canUndo = Boolean(item.undoable) && item.status === "done";
+        return `
+          <li class="assistant-op-item">
+            <div class="assistant-op-top">
+              <span class="assistant-op-summary">${escapeHtml(item.actionSummary || item.actionType || "عملیات")}</span>
+              <span class="assistant-op-status ${status.className}">${status.label}</span>
+            </div>
+            <div class="assistant-op-meta">
+              <span>شناسه: ${toPersianDigits(item.id || 0)}</span>
+              <span>نوع: ${escapeHtml(item.actionType || "-")}</span>
+              <span>زمان: ${escapeHtml(formatOperationDateTime(item.executedAt))}</span>
+            </div>
+            ${item.undoError ? `<p class="assistant-op-error">${escapeHtml(item.undoError)}</p>` : ""}
+            ${canUndo ? `<button class="btn-secondary assistant-op-undo-btn" type="button" data-op-id="${Number(item.id || 0)}">Undo</button>` : ""}
+          </li>
+        `;
+      })
+      .join("");
+  };
+
+  const loadOperations = async () => {
+    const response = await window.birHesab.invoke("assistant:operations:list", {
+      limit: 80
+    });
+    assistantUiState.operations = Array.isArray(response?.items) ? response.items : [];
+    renderOperations();
+  };
+
   const loadSettings = async () => {
     const data = await window.birHesab.invoke("assistant:settings:get");
     modelInput.value = data?.model || "gemini-2.5-flash";
+    displayNameInput.value = data?.displayName || "";
     apiKeyInput.value = "";
     clearApiKeyInput.checked = false;
     if (data?.hasApiKey) {
       showSettingsStatus(
-        `کلید Gemini تنظیم شده است (${data.apiKeyMasked || "مخفی"})`,
+        `کلید Gemini تنظیم شده است (${data.apiKeyMasked || "مخفی"})${
+          data?.displayName ? ` | کاربر: ${data.displayName}` : ""
+        }`,
         "ok"
       );
     } else {
@@ -3001,6 +3075,7 @@ async function initAssistantSection() {
     try {
       const payload = {
         model: modelInput.value.trim(),
+        displayName: displayNameInput.value.trim(),
         apiKey: apiKeyInput.value.trim(),
         clearApiKey: clearApiKeyInput.checked
       };
@@ -3009,7 +3084,9 @@ async function initAssistantSection() {
       clearApiKeyInput.checked = false;
       if (data?.hasApiKey) {
         showSettingsStatus(
-          `تنظیمات ذخیره شد. کلید فعال: ${data.apiKeyMasked || "مخفی"}`,
+          `تنظیمات ذخیره شد. کلید فعال: ${data.apiKeyMasked || "مخفی"}${
+            data?.displayName ? ` | کاربر: ${data.displayName}` : ""
+          }`,
           "ok"
         );
       } else {
@@ -3035,6 +3112,9 @@ async function initAssistantSection() {
       const response = await window.birHesab.invoke("assistant:chat", {
         messages: collectMessagesForApi()
       });
+      if (response?.profileDisplayName && response.profileDisplayName !== displayNameInput.value) {
+        displayNameInput.value = response.profileDisplayName;
+      }
       if (response?.modelUsed && response.modelUsed !== modelInput.value) {
         modelInput.value = response.modelUsed;
         showSettingsStatus(`مدل فعال دستیار: ${response.modelUsed}`, "ok");
@@ -3089,6 +3169,8 @@ async function initAssistantSection() {
       }
       assistantUiState.pendingActions = [];
       renderPendingActions();
+      await loadOperations();
+      await reloadSectionData();
     } catch (error) {
       appendMessage("system", `خطا در اجرای عملیات: ${error.message}`);
     } finally {
@@ -3118,10 +3200,55 @@ async function initAssistantSection() {
     chatInput.focus();
   });
 
+  refreshOpsBtn?.addEventListener("click", async () => {
+    refreshOpsBtn.disabled = true;
+    const prev = refreshOpsBtn.textContent;
+    refreshOpsBtn.textContent = "در حال بروزرسانی...";
+    try {
+      await loadOperations();
+    } catch (error) {
+      appendMessage("system", `خطا در دریافت لاگ عملیات: ${error.message}`);
+    } finally {
+      refreshOpsBtn.disabled = false;
+      refreshOpsBtn.textContent = prev;
+    }
+  });
+
+  operationsList.addEventListener("click", async (event) => {
+    const undoBtn = event.target.closest(".assistant-op-undo-btn");
+    if (!undoBtn) return;
+    const operationId = Number(undoBtn.dataset.opId || 0);
+    if (!operationId) return;
+
+    undoBtn.disabled = true;
+    const prevText = undoBtn.textContent;
+    undoBtn.textContent = "در حال Undo...";
+    try {
+      const result = await window.birHesab.invoke("assistant:operations:undo", {
+        operationId
+      });
+      if (result?.alreadyUndone) {
+        appendMessage("system", "این عملیات قبلا Undo شده است.");
+      } else {
+        appendMessage("system", `عملیات ${toPersianDigits(operationId)} با موفقیت Undo شد.`);
+      }
+      await loadOperations();
+      await reloadSectionData();
+    } catch (error) {
+      appendMessage("system", `خطا در Undo عملیات: ${error.message}`);
+      await loadOperations();
+    } finally {
+      undoBtn.disabled = false;
+      undoBtn.textContent = prevText;
+    }
+  });
+
   renderMessages();
   renderPendingActions();
+  renderOperations();
   setBusy(false);
   await loadSettings();
+  await loadOperations();
 }
 
 function setupBackupEvents() {
