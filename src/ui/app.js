@@ -2981,7 +2981,7 @@ async function initAssistantSection() {
 
   const loadSettings = async () => {
     const data = await window.birHesab.invoke("assistant:settings:get");
-    modelInput.value = data?.model || "gemini-2.0-flash";
+    modelInput.value = data?.model || "gemini-2.0-flash-preview-02-05";
     apiKeyInput.value = "";
     clearApiKeyInput.checked = false;
     if (data?.hasApiKey) {

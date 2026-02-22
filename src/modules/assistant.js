@@ -2,7 +2,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const SETTINGS_FILE_NAME = "assistant-settings.json";
-const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = "gemini-2.0-flash-preview-02-05";
+const LEGACY_MODEL_ALIASES = new Set([
+  "gemini-2.0-flash",
+  "models/gemini-2.0-flash"
+]);
 const MAX_CHAT_MESSAGES = 24;
 const MAX_PENDING_ACTIONS = 20;
 const MAX_EXECUTION_ACTIONS = 30;
@@ -47,7 +51,11 @@ function sanitizeModel(value) {
   if (!model) return DEFAULT_MODEL;
   const compact = model.replace(/\s+/g, "");
   if (!compact) return DEFAULT_MODEL;
-  return compact.slice(0, 80);
+  const normalized = compact.replace(/^models\//i, "").toLowerCase();
+  if (LEGACY_MODEL_ALIASES.has(compact.toLowerCase()) || normalized === "gemini-2.0-flash") {
+    return DEFAULT_MODEL;
+  }
+  return compact.replace(/^models\//i, "").slice(0, 80);
 }
 
 function getTodayJalaliDate() {
