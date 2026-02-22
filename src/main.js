@@ -11,6 +11,7 @@ const { registerReminderHandlers } = require("./modules/reminders.js");
 const { registerExpenseHandlers } = require("./modules/expenses.js");
 const { registerCashboxHandlers } = require("./modules/cashbox.js");
 const { registerUpdaterHandlers } = require("./modules/updater.js");
+const { registerAssistantHandlers } = require("./modules/assistant.js");
 
 let mainWindow;
 let db;
@@ -885,6 +886,7 @@ app
     registerReminderHandlers(ipcMain, db);
     registerExpenseHandlers(ipcMain, db);
     registerCashboxHandlers(ipcMain, db);
+    registerAssistantHandlers(ipcMain, db, app);
     registerReportHandlers();
     registerDataHandlers();
     registerCalendarEventHandlers();

@@ -1269,6 +1269,111 @@ tbody tr:hover {
   color: var(--brand-dark);
 }
 
+.assistant-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.assistant-check-item {
+  align-self: end;
+}
+
+.assistant-status-ok {
+  color: #0f7750;
+  font-weight: 700;
+}
+
+.assistant-status-error {
+  color: #ad3e40;
+  font-weight: 700;
+}
+
+.assistant-chat-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.assistant-quick-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assistant-chat-messages {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fcfffd;
+  min-height: 320px;
+  max-height: 58vh;
+  overflow: auto;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-msg {
+  max-width: min(85%, 760px);
+  border-radius: 12px;
+  padding: 8px 10px;
+  line-height: 1.9;
+}
+
+.assistant-msg p {
+  margin: 0;
+}
+
+.assistant-msg-assistant {
+  justify-self: start;
+  background: #eef9ff;
+  border: 1px solid #cbeaf8;
+  color: #12465f;
+}
+
+.assistant-msg-user {
+  justify-self: end;
+  background: #e9f9ef;
+  border: 1px solid #c5e9d3;
+  color: #145138;
+}
+
+.assistant-msg-system {
+  justify-self: center;
+  background: #fff8ea;
+  border: 1px solid #f2d9a8;
+  color: #7b4f00;
+}
+
+.assistant-pending {
+  border: 1px dashed #d4b27a;
+  background: #fffaf1;
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-pending ul {
+  margin: 0;
+  padding-right: 16px;
+  display: grid;
+  gap: 5px;
+}
+
+.assistant-chat-form {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-chat-form textarea {
+  min-height: 120px;
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1368,5 +1473,13 @@ tbody tr:hover {
 
   .day-card-grid {
     grid-template-columns: 1fr;
+  }
+
+  .assistant-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-msg {
+    max-width: 100%;
   }
 }

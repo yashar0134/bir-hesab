@@ -10,6 +10,10 @@ let reminderAlertModalBound = false;
 let reminderAlertItems = [];
 let reminderAlertLastDueTodayCount = 0;
 let calendarEventsDatasetPromise = null;
+const assistantUiState = {
+  messages: [],
+  pendingActions: []
+};
 
 const sectionMap = {
   "dashboard-birino": "components/dashboard-birino.html",
@@ -18,7 +22,8 @@ const sectionMap = {
   settlements: "components/settlements.html",
   reminders: "components/reminders.html",
   expenses: "components/expenses.html",
-  cashbox: "components/cashbox.html"
+  cashbox: "components/cashbox.html",
+  assistant: "components/assistant.html"
 };
 
 const helpMap = {
@@ -35,7 +40,9 @@ const helpMap = {
   expenses:
     "🧾 هر پولی که خرج می‌کنی اینجا ثبت کن.\n\n✅ قدم‌ها:\n۱) دامنه هزینه را انتخاب کن.\n۲) دسته‌بندی را بنویس.\n۳) مبلغ را بزن.\n\n👶 مثال:\nدامنه: کسب‌وکار\nدسته: اینترنت\nمبلغ: ۳۰۰,۰۰۰ تومان",
   cashbox:
-    "💵 اینجا خیلی ساده فقط دخل و خرج ثبت می‌کنی.\n\n✅ مبلغ، تاریخ و توضیح را وارد کن.\n✅ اگر پول گرفتی «ثبت دخل» را بزن.\n✅ اگر پول دادی «ثبت خرج» را بزن.\n\n👶 مثال:\nدخل: ۱۵,۰۰۰,۰۰۰ از کارفرما\nخرج: ۴,۰۰۰,۰۰۰ برای همکار"
+    "💵 اینجا خیلی ساده فقط دخل و خرج ثبت می‌کنی.\n\n✅ مبلغ، تاریخ و توضیح را وارد کن.\n✅ اگر پول گرفتی «ثبت دخل» را بزن.\n✅ اگر پول دادی «ثبت خرج» را بزن.\n\n👶 مثال:\nدخل: ۱۵,۰۰۰,۰۰۰ از کارفرما\nخرج: ۴,۰۰۰,۰۰۰ برای همکار",
+  assistant:
+    "🤖 اینجا دستیار هوش مصنوعی برنامه است.\n\n✅ چه کار می‌کند؟\n۱) ثبت حسابداری با چت\n۲) ارائه گزارش مالی محاوره‌ای\n۳) پیشنهاد عملیات و اجرای آن بعد از تایید شما\n\n👶 مثال:\n«امروز ۲ میلیون از دوستم گرفتم»\n«برای سوپرمارکت ۸۵۰ هزار پرداخت کن»"
 };
 
 const quickGuideMap = {
@@ -45,7 +52,8 @@ const quickGuideMap = {
   settlements: ["۱️⃣ تعریف همکار", "۲️⃣ شرط پروژه", "۳️⃣ ثبت تسویه", "✅ دیدن مانده"],
   reminders: ["۱️⃣ انتخاب روز", "۲️⃣ ثبت یادآور", "۳️⃣ دیدن دریافتی/پرداختی", "✅ پیگیری روزانه"],
   expenses: ["۱️⃣ انتخاب دامنه", "۲️⃣ ثبت مبلغ", "۳️⃣ ثبت تاریخ", "✅ ذخیره"],
-  cashbox: ["۱️⃣ ثبت مبلغ", "۲️⃣ ثبت تاریخ", "۳️⃣ ثبت توضیح", "✅ دکمه دخل یا خرج"]
+  cashbox: ["۱️⃣ ثبت مبلغ", "۲️⃣ ثبت تاریخ", "۳️⃣ ثبت توضیح", "✅ دکمه دخل یا خرج"],
+  assistant: ["۱️⃣ نوشتن درخواست", "۲️⃣ دیدن پیشنهاد عملیات", "۳️⃣ تایید اجرا", "✅ ثبت و گزارش هوشمند"]
 };
 
 const JALALI_MONTH_NAMES = Object.freeze([
@@ -701,6 +709,7 @@ async function initSectionLogic(section) {
   if (section === "reminders") return initRemindersSection();
   if (section === "expenses") return initExpensesSection();
   if (section === "cashbox") return initCashboxSection();
+  if (section === "assistant") return initAssistantSection();
 }
 
 async function exportReport(type, kind, report) {
@@ -2841,6 +2850,274 @@ async function initCashboxSection() {
   });
 
   await refresh();
+}
+
+async function initAssistantSection() {
+  const apiKeyInput = document.getElementById("assistantApiKey");
+  const clearApiKeyInput = document.getElementById("assistantClearApiKey");
+  const modelInput = document.getElementById("assistantModel");
+  const saveSettingsBtn = document.getElementById("assistantSaveSettingsBtn");
+  const settingsStatus = document.getElementById("assistantSettingsStatus");
+  const chatMessages = document.getElementById("assistantChatMessages");
+  const chatForm = document.getElementById("assistantChatForm");
+  const chatInput = document.getElementById("assistantChatInput");
+  const sendBtn = document.getElementById("assistantSendBtn");
+  const busyLabel = document.getElementById("assistantBusyLabel");
+  const clearConversationBtn = document.getElementById("assistantClearConversationBtn");
+  const pendingBox = document.getElementById("assistantPendingBox");
+  const pendingList = document.getElementById("assistantPendingList");
+  const confirmActionsBtn = document.getElementById("assistantConfirmActionsBtn");
+  const cancelActionsBtn = document.getElementById("assistantCancelActionsBtn");
+  const quickPrompts = document.getElementById("assistantQuickPrompts");
+
+  if (
+    !apiKeyInput ||
+    !clearApiKeyInput ||
+    !modelInput ||
+    !saveSettingsBtn ||
+    !settingsStatus ||
+    !chatMessages ||
+    !chatForm ||
+    !chatInput ||
+    !sendBtn ||
+    !busyLabel ||
+    !clearConversationBtn ||
+    !pendingBox ||
+    !pendingList ||
+    !confirmActionsBtn ||
+    !cancelActionsBtn
+  ) {
+    return;
+  }
+
+  const setBusy = (busy) => {
+    sendBtn.disabled = busy;
+    chatInput.disabled = busy;
+    busyLabel.classList.toggle("hidden", !busy);
+  };
+
+  const showSettingsStatus = (text, kind = "muted") => {
+    settingsStatus.textContent = text;
+    settingsStatus.classList.remove("assistant-status-ok", "assistant-status-error");
+    if (kind === "ok") {
+      settingsStatus.classList.add("assistant-status-ok");
+    }
+    if (kind === "error") {
+      settingsStatus.classList.add("assistant-status-error");
+    }
+  };
+
+  const renderMessages = () => {
+    if (!assistantUiState.messages.length) {
+      chatMessages.innerHTML = `
+        <article class="assistant-msg assistant-msg-assistant">
+          <p>سلام. من دستیار بیر حساب هستم. می‌تونی با من چت کنی تا ثبت مالی انجام بدم یا گزارش بگیرم.</p>
+        </article>
+      `;
+      return;
+    }
+    chatMessages.innerHTML = assistantUiState.messages
+      .map((item) => {
+        const roleClass =
+          item.role === "user"
+            ? "assistant-msg-user"
+            : item.role === "system"
+              ? "assistant-msg-system"
+              : "assistant-msg-assistant";
+        return `
+          <article class="assistant-msg ${roleClass}">
+            <p>${escapeHtml(item.text || "").replace(/\n/g, "<br>")}</p>
+          </article>
+        `;
+      })
+      .join("");
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  };
+
+  const appendMessage = (role, text) => {
+    assistantUiState.messages.push({
+      role,
+      text: String(text || "").trim(),
+      createdAt: new Date().toISOString()
+    });
+    if (assistantUiState.messages.length > 200) {
+      assistantUiState.messages = assistantUiState.messages.slice(-200);
+    }
+    renderMessages();
+  };
+
+  const collectMessagesForApi = () =>
+    assistantUiState.messages
+      .filter((item) => item.role === "user" || item.role === "assistant")
+      .slice(-24)
+      .map((item) => ({
+        role: item.role,
+        content: item.text
+      }));
+
+  const renderPendingActions = () => {
+    const actions = Array.isArray(assistantUiState.pendingActions)
+      ? assistantUiState.pendingActions
+      : [];
+
+    if (!actions.length) {
+      pendingBox.classList.add("hidden");
+      pendingList.innerHTML = "";
+      return;
+    }
+
+    pendingBox.classList.remove("hidden");
+    pendingList.innerHTML = actions
+      .map(
+        (action, index) => `
+          <li>
+            <strong>${toPersianDigits(index + 1)}.</strong>
+            <span>${escapeHtml(action.summary || action.type || "عملیات بدون عنوان")}</span>
+          </li>
+        `
+      )
+      .join("");
+  };
+
+  const loadSettings = async () => {
+    const data = await window.birHesab.invoke("assistant:settings:get");
+    modelInput.value = data?.model || "gemini-2.0-flash";
+    apiKeyInput.value = "";
+    clearApiKeyInput.checked = false;
+    if (data?.hasApiKey) {
+      showSettingsStatus(
+        `کلید Gemini تنظیم شده است (${data.apiKeyMasked || "مخفی"})`,
+        "ok"
+      );
+    } else {
+      showSettingsStatus("کلید Gemini تنظیم نشده است.", "error");
+    }
+  };
+
+  saveSettingsBtn.addEventListener("click", async () => {
+    saveSettingsBtn.disabled = true;
+    const prevText = saveSettingsBtn.textContent;
+    saveSettingsBtn.textContent = "در حال ذخیره...";
+    try {
+      const payload = {
+        model: modelInput.value.trim(),
+        apiKey: apiKeyInput.value.trim(),
+        clearApiKey: clearApiKeyInput.checked
+      };
+      const data = await window.birHesab.invoke("assistant:settings:update", payload);
+      apiKeyInput.value = "";
+      clearApiKeyInput.checked = false;
+      if (data?.hasApiKey) {
+        showSettingsStatus(
+          `تنظیمات ذخیره شد. کلید فعال: ${data.apiKeyMasked || "مخفی"}`,
+          "ok"
+        );
+      } else {
+        showSettingsStatus("تنظیمات ذخیره شد ولی کلیدی ثبت نشده است.", "error");
+      }
+    } catch (error) {
+      showSettingsStatus(`خطا در ذخیره تنظیمات: ${error.message}`, "error");
+    } finally {
+      saveSettingsBtn.disabled = false;
+      saveSettingsBtn.textContent = prevText;
+    }
+  });
+
+  chatForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = String(chatInput.value || "").trim();
+    if (!text) return;
+
+    chatInput.value = "";
+    appendMessage("user", text);
+    setBusy(true);
+    try {
+      const response = await window.birHesab.invoke("assistant:chat", {
+        messages: collectMessagesForApi()
+      });
+      if (response?.assistantReply) {
+        appendMessage("assistant", response.assistantReply);
+      } else {
+        appendMessage("assistant", "پاسخی دریافت نشد.");
+      }
+      assistantUiState.pendingActions = Array.isArray(response?.pendingActions)
+        ? response.pendingActions
+        : [];
+      renderPendingActions();
+    } catch (error) {
+      appendMessage("system", `خطا در ارتباط با دستیار: ${error.message}`);
+    } finally {
+      setBusy(false);
+      chatInput.focus();
+    }
+  });
+
+  confirmActionsBtn.addEventListener("click", async () => {
+    const actions = Array.isArray(assistantUiState.pendingActions)
+      ? assistantUiState.pendingActions
+      : [];
+    if (!actions.length) return;
+
+    confirmActionsBtn.disabled = true;
+    const prevLabel = confirmActionsBtn.textContent;
+    confirmActionsBtn.textContent = "در حال اجرا...";
+    try {
+      const response = await window.birHesab.invoke("assistant:execute-actions", {
+        actions
+      });
+      const executed = Array.isArray(response?.executed) ? response.executed : [];
+      const failed = Array.isArray(response?.failed) ? response.failed : [];
+      if (executed.length) {
+        appendMessage(
+          "system",
+          `عملیات انجام شد:\n${executed
+            .map((item, index) => `${toPersianDigits(index + 1)}) ${item.summary}`)
+            .join("\n")}`
+        );
+      }
+      if (failed.length) {
+        appendMessage(
+          "system",
+          `بخشی از عملیات ناموفق بود:\n${failed
+            .map((item, index) => `${toPersianDigits(index + 1)}) ${item.error}`)
+            .join("\n")}`
+        );
+      }
+      assistantUiState.pendingActions = [];
+      renderPendingActions();
+    } catch (error) {
+      appendMessage("system", `خطا در اجرای عملیات: ${error.message}`);
+    } finally {
+      confirmActionsBtn.disabled = false;
+      confirmActionsBtn.textContent = prevLabel;
+    }
+  });
+
+  cancelActionsBtn.addEventListener("click", () => {
+    if (!assistantUiState.pendingActions.length) return;
+    assistantUiState.pendingActions = [];
+    renderPendingActions();
+    appendMessage("system", "عملیات پیشنهادی لغو شد.");
+  });
+
+  clearConversationBtn.addEventListener("click", () => {
+    assistantUiState.messages = [];
+    assistantUiState.pendingActions = [];
+    renderMessages();
+    renderPendingActions();
+  });
+
+  quickPrompts?.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-prompt]");
+    if (!btn) return;
+    chatInput.value = btn.dataset.prompt || "";
+    chatInput.focus();
+  });
+
+  renderMessages();
+  renderPendingActions();
+  setBusy(false);
+  await loadSettings();
 }
 
 function setupBackupEvents() {

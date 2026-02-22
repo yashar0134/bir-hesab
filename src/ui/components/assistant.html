@@ -1,0 +1,61 @@
+﻿<section class="section-card">
+  <h2 class="section-title">دستیار هوشمند بیر حساب (Gemini)</h2>
+  <p class="list-note">
+    با دستیار چت کنید تا ثبت‌های مالی را پیشنهاد دهد، گزارش‌های سریع بدهد و بعد از تایید شما عملیات را
+    انجام دهد.
+  </p>
+
+  <div class="assistant-settings-grid">
+    <div>
+      <label for="assistantApiKey">کلید API جمینای</label>
+      <input id="assistantApiKey" type="password" placeholder="AIza..." autocomplete="off" />
+    </div>
+    <div>
+      <label for="assistantModel">مدل</label>
+      <input id="assistantModel" value="gemini-2.0-flash" autocomplete="off" />
+    </div>
+    <label class="check-item assistant-check-item">
+      <input id="assistantClearApiKey" type="checkbox" />
+      حذف کلید ذخیره‌شده
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <button id="assistantSaveSettingsBtn" class="btn-primary" type="button">ذخیره تنظیمات دستیار</button>
+    <span id="assistantSettingsStatus" class="list-note"></span>
+  </div>
+</section>
+
+<section class="section-card assistant-chat-shell">
+  <div id="assistantQuickPrompts" class="assistant-quick-prompts">
+    <button class="btn-secondary" type="button" data-prompt="امروز ۲,۵۰۰,۰۰۰ تومان بابت سفارش طراحی گرفتم. ثبت کن.">ثبت دریافتی</button>
+    <button class="btn-secondary" type="button" data-prompt="امروز ۸۵۰,۰۰۰ تومان بابت سوپرمارکت پرداخت کردم. ثبت کن.">ثبت پرداختی عمومی</button>
+    <button class="btn-secondary" type="button" data-prompt="خلاصه مالی این ماه را بهم گزارش بده.">گزارش این ماه</button>
+    <button class="btn-secondary" type="button" data-prompt="برای فردا ساعت ۹ یادآور پیگیری مطالبات ثبت کن.">ثبت یادآور</button>
+  </div>
+
+  <div id="assistantChatMessages" class="assistant-chat-messages"></div>
+
+  <div id="assistantPendingBox" class="assistant-pending hidden">
+    <h3 class="section-title">عملیات پیشنهادی برای اجرا</h3>
+    <ul id="assistantPendingList"></ul>
+    <div class="form-actions">
+      <button id="assistantConfirmActionsBtn" class="btn-primary" type="button">تایید و اجرا</button>
+      <button id="assistantCancelActionsBtn" class="btn-secondary" type="button">لغو عملیات</button>
+    </div>
+  </div>
+
+  <form id="assistantChatForm" class="assistant-chat-form">
+    <label for="assistantChatInput">پیام شما</label>
+    <textarea
+      id="assistantChatInput"
+      placeholder="مثال: امروز ۳ میلیون از دوست‌م گرفتم، ثبتش کن..."
+      required
+    ></textarea>
+    <div class="form-actions">
+      <button id="assistantSendBtn" class="btn-primary" type="submit">ارسال به دستیار</button>
+      <button id="assistantClearConversationBtn" class="btn-secondary" type="button">پاکسازی گفتگو</button>
+      <span id="assistantBusyLabel" class="list-note hidden">در حال پردازش...</span>
+    </div>
+  </form>
+</section>
